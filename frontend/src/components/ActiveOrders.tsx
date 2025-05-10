@@ -3,6 +3,7 @@
 import type React from "react";
 import type { Order } from "../types";
 import { Clock, CheckCircle, ServerCrash } from "lucide-react";
+import { useState } from "react";
 
 interface ActiveOrdersProps {
   orders: Order[];
@@ -25,6 +26,9 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
         return "bg-gray-100 text-gray-800";
     }
   };
+
+  // const [role, setRole] = useState<String>();
+  const role = 1;
 
   const getStatusIcon = (status: Order["status"]) => {
     switch (status) {
