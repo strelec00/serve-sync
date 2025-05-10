@@ -50,8 +50,8 @@ const mockOrders: Record<string, Order> = {
 
 const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const popupRef = useRef<HTMLDivElement | null>(null);
 
   const getStatusColor = (status: Table["status"]) => {
     switch (status) {
@@ -89,43 +89,65 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
 
   // Handle click on view order button
   const handleViewOrder = (tableId: string) => {
-    const buttonElement = buttonRefs.current[tableId];
-
-    if (buttonElement) {
-      const rect = buttonElement.getBoundingClientRect();
-      const scrollTop = window.scrollY || document.documentElement.scrollTop;
-
-      // Position the popup above the button
-      setPopupPosition({
-        top: rect.top + scrollTop - 10, // Position above the button with a small gap
-        left: rect.left + rect.width / 2, // Center horizontally with the button
-      });
-    }
-
     setSelectedTable(tableId);
+    // When popup opens, prevent scrolling on the body
+    if (typeof document !== "undefined") {
+      document.body.style.overflow = "hidden";
+    }
+  };
+
+  // Close popup
+  const closePopup = () => {
+    setSelectedTable(null);
+    // Re-enable scrolling when popup closes
+    if (typeof document !== "undefined") {
+      document.body.style.overflow = "";
+    }
   };
 
   // Close popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      const popup = document.getElementById("order-popup");
-      if (popup && !popup.contains(event.target as Node)) {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(event.target as Node)
+      ) {
         // Check if the click was on a button
         const isButtonClick = Object.values(buttonRefs.current).some(
           (btn) => btn && btn.contains(event.target as Node)
         );
 
         if (!isButtonClick) {
-          setSelectedTable(null);
+          closePopup();
         }
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
+    if (selectedTable) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
+  }, [selectedTable]);
+
+  // Close on escape key
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closePopup();
+      }
+    };
+
+    if (selectedTable) {
+      document.addEventListener("keydown", handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener("keydown", handleEscKey);
+    };
+  }, [selectedTable]);
 
   return (
     <div className="relative">
@@ -134,12 +156,12 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
         {tables.map((table) => (
           <div
             key={table.id}
-            className="bg-white overflow-hidden shadow rounded-lg"
+            className="bg-white overflow-hidden shadow rounded-lg border border-gray-300"
           >
             <div className="px-4 py-5 sm:p-6">
               <div className="flex flex-col items-center">
                 <div className="flex flex-col items-center">
-                  <span className="text-xl font-bold mb-3">
+                  <span className="text-xl font-bold mb-2">
                     Table {table.number}
                   </span>
                 </div>
@@ -149,9 +171,6 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
                   )}`}
                 >
                   {table.status}
-                </span>
-                <span className="mt-1 text-sm text-gray-500">
-                  {table.capacity} seats
                 </span>
                 <div className="mt-3 w-full">
                   <button
@@ -171,101 +190,103 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
         ))}
       </div>
 
-      {/* Simple Popup */}
+      {/* Modern Popup with Backdrop */}
       {selectedTable && (
-        <div
-          id="order-popup"
-          className="absolute bg-white rounded-lg shadow-xl border border-gray-200 w-80 z-50 animate-fadeIn"
-          style={{
-            top: `${popupPosition.top}px`,
-            left: `${popupPosition.left}px`,
-            transform: "translate(-50%, -100%)", // Center horizontally and position above
-          }}
-        >
-          <div className="p-4">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-sm font-bold text-gray-900">
-                Table {tables.find((t) => t.id === selectedTable)?.number} Order
-              </h3>
-              <button
-                onClick={() => setSelectedTable(null)}
-                className="text-gray-400 hover:text-gray-500 focus:outline-none"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Blurred backdrop */}
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity duration-300"
+            onClick={closePopup}
+          />
 
-            {(() => {
-              const order = getTableOrder(selectedTable);
+          {/* Popup content */}
+          <div
+            ref={popupRef}
+            className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden transform transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-bottom-4"
+          >
+            <div className="p-5">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Table {tables.find((t) => t.id === selectedTable)?.number}{" "}
+                  Order
+                </h3>
+                <button
+                  onClick={closePopup}
+                  className="text-gray-400 hover:text-gray-500 focus:outline-none transition-colors duration-200"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
 
-              if (!order) {
-                return (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-gray-500">No order found.</p>
-                  </div>
-                );
-              }
+              {(() => {
+                const order = getTableOrder(selectedTable);
 
-              return (
-                <>
-                  <div className="mb-2">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getOrderStatusColor(
-                        order.status
-                      )}`}
-                    >
-                      {order.status.charAt(0).toUpperCase() +
-                        order.status.slice(1)}
-                    </span>
-                  </div>
-
-                  <div className="border-t border-gray-200 pt-2">
-                    <h4 className="font-medium text-xs text-gray-500 mb-1">
-                      ORDER ITEMS
-                    </h4>
-                    <ul className="divide-y divide-gray-100">
-                      {order.items.map((item) => (
-                        <li
-                          key={item.id}
-                          className="py-1.5 flex justify-between"
-                        >
-                          <div>
-                            <p className="text-xs font-medium text-gray-900">
-                              {item.name}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Qty: {item.quantity}
-                            </p>
-                          </div>
-                          <p className="text-xs font-medium text-gray-900">
-                            ${item.price.toFixed(2)}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="border-t border-gray-200 pt-2 mt-2">
-                    <div className="flex justify-between items-center font-medium">
-                      <p className="text-sm text-gray-900">Total</p>
-                      <p className="text-sm text-gray-900">
-                        ${order.total.toFixed(2)}
-                      </p>
+                if (!order) {
+                  return (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">No order found.</p>
                     </div>
-                  </div>
+                  );
+                }
 
-                  <div className="mt-3">
-                    <button className="w-full bg-gray-100 text-gray-700 border border-gray-300 py-1.5 px-3 text-xs rounded-md hover:bg-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-400 transition-all">
-                      Update Status
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
+                return (
+                  <>
+                    <div className="mb-4">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium ${getOrderStatusColor(
+                          order.status
+                        )}`}
+                      >
+                        {order.status.charAt(0).toUpperCase() +
+                          order.status.slice(1)}
+                      </span>
+                    </div>
+
+                    <div className="border-t border-gray-200 pt-4">
+                      <h4 className="font-medium text-xs text-gray-500 uppercase tracking-wider mb-3">
+                        Order Items
+                      </h4>
+                      <ul className="divide-y divide-gray-100">
+                        {order.items.map((item) => (
+                          <li
+                            key={item.id}
+                            className="py-3 flex justify-between"
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {item.name}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                Qty: {item.quantity}
+                              </p>
+                            </div>
+                            <p className="text-sm font-medium text-gray-900">
+                              ${item.price.toFixed(2)}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="border-t border-gray-200 pt-4 mt-4">
+                      <div className="flex justify-between items-center font-medium">
+                        <p className="text-base text-gray-900">Total</p>
+                        <p className="text-base text-gray-900 font-bold">
+                          ${order.total.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6">
+                      <button className="w-full bg-gray-900 text-white py-2.5 px-4 text-sm font-medium rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 transition-all">
+                        Update Status
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           </div>
-
-          {/* Popup arrow */}
-          <div className="absolute left-1/2 bottom-0 w-3 h-3 bg-white border-b border-r border-gray-200 transform translate-y-1.5 rotate-45 -translate-x-1.5"></div>
         </div>
       )}
     </div>
