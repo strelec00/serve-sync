@@ -3,7 +3,6 @@
 import type React from "react";
 import type { Order } from "../types";
 import { Clock, CheckCircle, ServerCrash } from "lucide-react";
-import { useState } from "react";
 
 interface ActiveOrdersProps {
   orders: Order[];
@@ -28,7 +27,6 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
   };
 
   // const [role, setRole] = useState<String>();
-  const role = 1;
 
   const getStatusIcon = (status: Order["status"]) => {
     switch (status) {
@@ -65,7 +63,7 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
         {orders.map((order) => (
           <div
             key={order.id}
-            className="bg-white overflow-hidden shadow rounded-lg"
+            className="bg-white overflow-hidden shadow rounded-lg border border-gray-200"
           >
             <div className="px-4 py-5 sm:p-6">
               <div className="flex items-center justify-between mb-4">

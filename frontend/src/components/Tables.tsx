@@ -156,7 +156,7 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
         {tables.map((table) => (
           <div
             key={table.id}
-            className="bg-white overflow-hidden shadow rounded-lg border border-gray-300"
+            className="bg-white overflow-hidden shadow rounded-lg border border-gray-200"
           >
             <div className="px-4 py-5 sm:p-6">
               <div className="flex flex-col items-center">

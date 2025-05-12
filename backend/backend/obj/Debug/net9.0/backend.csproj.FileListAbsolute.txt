@@ -32,3 +32,6 @@
 /Users/janstrelec/Documents/Projects/serve-sync/backend/backend/obj/Debug/net9.0/backend.pdb
 /Users/janstrelec/Documents/Projects/serve-sync/backend/backend/obj/Debug/net9.0/backend.genruntimeconfig.cache
 /Users/janstrelec/Documents/Projects/serve-sync/backend/backend/obj/Debug/net9.0/ref/backend.dll
+/Users/janstrelec/Documents/Projects/serve-sync/backend/backend/bin/Debug/net9.0/Swashbuckle.AspNetCore.Swagger.dll
+/Users/janstrelec/Documents/Projects/serve-sync/backend/backend/bin/Debug/net9.0/Swashbuckle.AspNetCore.SwaggerGen.dll
+/Users/janstrelec/Documents/Projects/serve-sync/backend/backend/bin/Debug/net9.0/Swashbuckle.AspNetCore.SwaggerUI.dll
