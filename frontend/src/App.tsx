@@ -6,6 +6,7 @@ import { LayoutDashboard, Utensils, BookOpen } from "lucide-react";
 import ActiveOrders from "./components/ActiveOrders";
 import Tables from "./components/Tables";
 import Menu from "./components/Menu";
+import LoginForm from "./components/LoginForm";
 import type { Order, Table, MenuItem } from "./types";
 import "./index.css";
 
@@ -13,6 +14,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"orders" | "tables" | "menu">(
     "orders"
   );
+  const [showLoginForm, setShowLoginForm] = useState(false);
 
   // Sample data
   const [orders, setOrders] = useState<Order[]>([
@@ -156,6 +158,14 @@ const App: React.FC = () => {
                 </h1>
               </div>
             </div>
+            <div className="flex items-center">
+              <button
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                onClick={() => setShowLoginForm(true)}
+              >
+                Login
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -216,6 +226,8 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showLoginForm && <LoginForm onClose={() => setShowLoginForm(false)} />}
     </div>
   );
 };
