@@ -1,50 +1,125 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.Text.Json.Serialization;
 using backend.Data;
 using backend.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
-// ➕ PostgreSQL EF Core
+// Dodaj EF Core za PostgreSQL
 builder.Services.AddDbContext<RestaurantContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// ➕ Swagger / OpenAPI
+// Dodaj JWT autentifikaciju
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes("tajni_kljuc_za_token1234567890tajni_kljuc!")
+            )
+        };
+    });
+
+// Podrška za enum kao string u JSON-u
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+
+// CORS policy za React frontend
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
+// Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// 🧪 Swagger only in development
 if (app.Environment.IsDevelopment())
 {
+    app.UseDeveloperExceptionPage();
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
 
-app.MapGet("/menuitems", async (RestaurantContext db) =>
-        await db.MenuItems
-            .Include(x => x.Category)
-            .ToListAsync())
-    .WithName("GetMenuItems")
-    .WithTags("Menu");
+// AKTIVIRAJ CORS POLICY OVDJE
+app.UseCors("AllowFrontend");
 
-app.MapPost("/menuitems", async (MenuItem item, RestaurantContext db) =>
+app.UseAuthentication();
+app.UseAuthorization();
+
+// ---------------- ENDPOINTI ---------------- //
+
+app.MapGet("/tables", async (RestaurantContext db) =>
+        await db.Tables.ToListAsync())
+    .WithName("GetTables")
+    .WithTags("Tables");
+
+app.MapPost("/tables", async (Table table, RestaurantContext db) =>
 {
-    db.MenuItems.Add(item);
+    db.Tables.Add(table);
     await db.SaveChangesAsync();
-    return Results.Created($"/menuitems/{item.MenuItemId}", item);
-}).WithName("CreateMenuItem").WithTags("Menu");
-#endregion
+    return Results.Created($"/tables/{table.TableId}", table);
+}).WithName("AddTable").WithTags("Tables");
 
-#region ORDER API
+app.MapPost("/users/register", async (User user, RestaurantContext db) =>
+{
+    db.Users.Add(user);
+    await db.SaveChangesAsync();
+    return Results.Created($"/users/{user.UserId}", user);
+}).WithName("RegisterUser").WithTags("Users");
+
+app.MapPost("/users/login", async (LoginRequest login, RestaurantContext db) =>
+{
+    var user = await db.Users.FirstOrDefaultAsync(u =>
+        u.Username == login.Username && u.Password == login.Password);
+
+    if (user == null)
+        return Results.Unauthorized();
+
+    var tokenHandler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+    var key = Encoding.UTF8.GetBytes("tajni_kljuc_za_token1234567890tajni_kljuc!");
+    var tokenDescriptor = new SecurityTokenDescriptor
+    {
+        Subject = new System.Security.Claims.ClaimsIdentity(new[]
+        {
+            new System.Security.Claims.Claim("id", user.UserId.ToString()),
+            new System.Security.Claims.Claim("role", user.RoleId?.ToString() ?? "0"),
+        }),
+        Expires = DateTime.UtcNow.AddHours(2),
+        SigningCredentials = new SigningCredentials(
+            new SymmetricSecurityKey(key),
+            SecurityAlgorithms.HmacSha256Signature)
+    };
+
+    var token = tokenHandler.CreateToken(tokenDescriptor);
+    var jwt = tokenHandler.WriteToken(token);
+
+    return Results.Ok(new { token = jwt });
+})
+.WithName("LoginUser")
+.WithTags("Users");
+
 app.MapGet("/orders", async (RestaurantContext db) =>
-        await db.Orders
-            .Include(o => o.OrderItems)
-            .ThenInclude(oi => oi.MenuItem)
-            .ToListAsync())
+        await db.Orders.ToListAsync())
     .WithName("GetOrders")
     .WithTags("Orders");
 
@@ -54,6 +129,48 @@ app.MapPost("/orders", async (Order order, RestaurantContext db) =>
     await db.SaveChangesAsync();
     return Results.Created($"/orders/{order.OrderId}", order);
 }).WithName("CreateOrder").WithTags("Orders");
-#endregion
+
+app.MapPut("/orders/{id}/status", async (int id, OrderStatus status, RestaurantContext db) =>
+{
+    var order = await db.Orders.FindAsync(id);
+    if (order == null) return Results.NotFound();
+
+    order.Status = status;
+    await db.SaveChangesAsync();
+    return Results.Ok(order);
+}).WithName("ChangeOrderStatus").WithTags("Orders");
+
+app.MapPut("/tables/{id}/status", async (int id, TableStatus status, RestaurantContext db) =>
+{
+    var table = await db.Tables.FindAsync(id);
+    if (table == null) return Results.NotFound();
+
+    table.Status = status;
+    await db.SaveChangesAsync();
+    return Results.Ok(table);
+}).WithName("ChangeTableStatus").WithTags("Tables");
+
+app.MapGet("/menuitems", async (RestaurantContext db) =>
+    await db.MenuItems
+        .Include(x => x.Category)
+        .Select(x => new
+        {
+            x.MenuItemId,
+            x.Name,
+            x.Description,
+            x.Price,
+            x.CategoryId,
+            CategoryName = x.Category.Name
+        })
+        .ToListAsync())
+    .WithName("GetMenuItems")
+    .WithTags("Menu");
+
+app.MapPost("/menuitems", async (MenuItem item, RestaurantContext db) =>
+{
+    db.MenuItems.Add(item);
+    await db.SaveChangesAsync();
+    return Results.Created($"/menuitems/{item.MenuItemId}", item);
+}).WithName("CreateMenuItem").WithTags("Menu");
 
 app.Run();

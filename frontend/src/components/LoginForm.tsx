@@ -1,24 +1,43 @@
 "use client";
 
-import type React from "react";
-
-import { useState } from "react";
+import React, { useState } from "react";
 import { X } from "lucide-react";
 
 interface LoginFormProps {
   onClose: () => void;
+  onLoginSuccess: () => void;
 }
 
-const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
-  const [email, setEmail] = useState("");
+const LoginForm: React.FC<LoginFormProps> = ({ onClose, onLoginSuccess }) => {
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Here you would typically handle authentication
-    console.log("Login attempt with:", { email, password });
-    // For demo purposes, just close the form
-    onClose();
+    setError("");
+
+    try {
+      const response = await fetch("http://localhost:5123/users/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Invalid credentials");
+      }
+
+      const data = await response.json();
+      localStorage.setItem("token", data.token);
+      onLoginSuccess();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setError("Login failed. Please check your credentials.");
+    }
   };
 
   return (
@@ -29,7 +48,6 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
           className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
         >
           <X className="h-5 w-5" />
-          <span className="sr-only">Close</span>
         </button>
 
         <h2 className="text-2xl font-bold text-gray-800 mb-6">Login</h2>
@@ -37,18 +55,17 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label
-              htmlFor="email"
+              htmlFor="username"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Email
+              Username
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              placeholder="you@example.com"
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
               required
             />
           </div>
@@ -65,41 +82,17 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
               required
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <label
-                htmlFor="remember-me"
-                className="ml-2 block text-sm text-gray-700"
-              >
-                Remember me
-              </label>
-            </div>
-
-            <div className="text-sm">
-              <a
-                href="#"
-                className="font-medium text-blue-600 hover:text-blue-500"
-              >
-                Forgot your password?
-              </a>
-            </div>
-          </div>
+          {error && <p className="text-red-500 text-sm">{error}</p>}
 
           <div>
             <button
               type="submit"
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               Sign in
             </button>

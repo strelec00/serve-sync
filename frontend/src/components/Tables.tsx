@@ -1,16 +1,15 @@
 "use client";
 
-import type React from "react";
-import { useState, useRef, useEffect } from "react";
-import type { Table } from "../types";
+import React, { useState, useRef, useEffect } from "react";
+import { jwtDecode } from "jwt-decode";
 import { X } from "lucide-react";
+import type { Table } from "../types";
 
 interface TablesProps {
   tables: Table[];
   updateTableStatus: (tableId: string, newStatus: Table["status"]) => void;
 }
 
-// Sample order type - adjust based on your actual data structure
 interface OrderItem {
   id: string;
   name: string;
@@ -23,6 +22,12 @@ interface Order {
   items: OrderItem[];
   total: number;
   status: "pending" | "preparing" | "ready" | "served" | "paid";
+}
+
+interface JwtPayload {
+  id: string;
+  role: string;
+  exp: number;
 }
 
 const mockOrders: Record<string, Order> = {
@@ -52,6 +57,20 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const popupRef = useRef<HTMLDivElement | null>(null);
+
+  // Decode JWT token
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  let userRole: string | null = null;
+
+  if (token) {
+    try {
+      const decoded = jwtDecode<JwtPayload>(token);
+      userRole = decoded.role;
+    } catch (err) {
+      console.error("Nevaljan token:", err);
+    }
+  }
 
   const getStatusColor = (status: Table["status"]) => {
     switch (status) {
@@ -87,32 +106,26 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
     return mockOrders[tableId] || null;
   };
 
-  // Handle click on view order button
   const handleViewOrder = (tableId: string) => {
     setSelectedTable(tableId);
-    // When popup opens, prevent scrolling on the body
     if (typeof document !== "undefined") {
       document.body.style.overflow = "hidden";
     }
   };
 
-  // Close popup
   const closePopup = () => {
     setSelectedTable(null);
-    // Re-enable scrolling when popup closes
     if (typeof document !== "undefined") {
       document.body.style.overflow = "";
     }
   };
 
-  // Close popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
         popupRef.current &&
         !popupRef.current.contains(event.target as Node)
       ) {
-        // Check if the click was on a button
         const isButtonClick = Object.values(buttonRefs.current).some(
           (btn) => btn && btn.contains(event.target as Node)
         );
@@ -132,7 +145,6 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
     };
   }, [selectedTable]);
 
-  // Close on escape key
   useEffect(() => {
     const handleEscKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -151,7 +163,18 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
 
   return (
     <div className="relative">
-      <h2 className="text-lg font-medium text-gray-900 mb-4">Tables</h2>
+      <div className="flex justify-between">
+        <h2 className="text-lg font-bold text-gray-900 mb-4">Tables</h2>
+
+        {(userRole === "1" || userRole === "3") && (
+          <div className="mb-4">
+            <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-1 px-3 rounded-lg shadow">
+              + Add Table
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {tables.map((table) => (
           <div
@@ -190,16 +213,12 @@ const Tables: React.FC<TablesProps> = ({ tables, updateTableStatus }) => {
         ))}
       </div>
 
-      {/* Modern Popup with Backdrop */}
       {selectedTable && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Blurred backdrop */}
           <div
             className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity duration-300"
             onClick={closePopup}
           />
-
-          {/* Popup content */}
           <div
             ref={popupRef}
             className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden transform transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-bottom-4"
