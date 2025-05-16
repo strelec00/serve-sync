@@ -25,10 +25,7 @@ export interface MenuItem {
   description: string;
   price: number;
   categoryId: number;
-  category?: Category;
-  restaurantId?: number | null;
-  restaurant?: Restaurant;
-  orderItems: OrderItem[];
+  categoryName: string; 
 }
 
 export interface OrderItem {

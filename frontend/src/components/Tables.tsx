@@ -170,8 +170,8 @@ const Tables: React.FC<TablesProps> = ({
                               </p>
                             </div>
                             <div className="flex items-center">
-                              <span className="text-gray-700 font-medium">
-                                x{item.quantity}
+                              <span className="text-gray-600 font-medium">
+                                {item.quantity} x {item.menuItem.price}€
                               </span>
                             </div>
                           </div>

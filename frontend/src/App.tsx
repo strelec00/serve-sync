@@ -1,7 +1,6 @@
 "use client";
 
-import type React from "react";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { LayoutDashboard, Utensils, BookOpen } from "lucide-react";
 import ActiveOrders from "./components/ActiveOrders";
 import Tables from "./components/Tables";
@@ -33,24 +32,26 @@ const App: React.FC = () => {
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (token) {
-      setIsAuthenticated(true);
       try {
         const decoded = jwtDecode<JwtPayload>(token);
         setUserRole(decoded.role);
+        setIsAuthenticated(true);
 
         if (decoded.role === "3") {
           setActiveTab("tables");
         } else {
           setActiveTab("orders");
         }
-      } catch (err) {
-        console.error("Nevaljan token:", err);
+      } catch {
         setIsAuthenticated(false);
+        setUserRole(null);
       }
     }
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const fetchData = async () => {
       try {
         const token = localStorage.getItem("token");
@@ -58,6 +59,7 @@ const App: React.FC = () => {
           ? { Authorization: `Bearer ${token}` }
           : {};
 
+        // Dohvati sve potrebne podatke (orders, tables, menuitems)
         const [ordersRes, tablesRes, menuRes] = await Promise.all([
           fetch("http://localhost:5123/orders", { headers }),
           fetch("http://localhost:5123/tables", { headers }),
@@ -80,30 +82,29 @@ const App: React.FC = () => {
       }
     };
 
-    if (isAuthenticated) {
-      fetchData();
-    }
+    fetchData();
   }, [isAuthenticated]);
 
+  // Update funkcije za UI i state
   const updateOrderStatus = (orderId: number, newStatus: OrderStatus) => {
-    setOrders(
-      orders.map((order) =>
+    setOrders((prev) =>
+      prev.map((order) =>
         order.orderId === orderId ? { ...order, status: newStatus } : order
       )
     );
   };
 
   const updateTableStatus = (tableId: number, newStatus: TableStatus) => {
-    setTables(
-      tables.map((table) =>
+    setTables((prev) =>
+      prev.map((table) =>
         table.tableId === tableId ? { ...table, status: newStatus } : table
       )
     );
   };
 
   const updateMenuItem = (itemId: number, updatedItem: Partial<MenuItem>) => {
-    setMenuItems(
-      menuItems.map((item) =>
+    setMenuItems((prev) =>
+      prev.map((item) =>
         item.menuItemId === itemId ? { ...item, ...updatedItem } : item
       )
     );

@@ -146,7 +146,7 @@ app.MapGet("/orders", async (RestaurantContext db) =>
             o.OrderId,
             o.Name,
             o.Status,
-            o.TableId,
+            o.TableId, 
             TableNumber = o.Table.Capacity,       // ako postoji
             o.UserId,
             UserName = o.User.Username,         // ako postoji
@@ -236,11 +236,29 @@ app.MapGet("/menuitems", async (RestaurantContext db) =>
     .WithName("GetMenuItems")
     .WithTags("Menu");
 
-app.MapPost("/menuitems", async (MenuItem item, RestaurantContext db) =>
+
+app.MapPut("/menuitems/{id}", async (int id, MenuItem updatedItem, RestaurantContext db) =>
 {
-    db.MenuItems.Add(item);
+    var existingItem = await db.MenuItems.FindAsync(id);
+    if (existingItem is null) return Results.NotFound();
+
+    existingItem.Name = updatedItem.Name;
+    existingItem.Description = updatedItem.Description;
+    existingItem.Price = updatedItem.Price;
+    existingItem.CategoryId = updatedItem.CategoryId;
+
     await db.SaveChangesAsync();
-    return Results.Created($"/menuitems/{item.MenuItemId}", item);
-}).WithName("CreateMenuItem").WithTags("Menu");
+    return Results.NoContent();
+}).WithName("UpdateMenuItem").WithTags("Menu");
+
+app.MapPost("/menuitems", async (MenuItem newItem, RestaurantContext db) =>
+    {
+        db.MenuItems.Add(newItem);
+        await db.SaveChangesAsync();
+
+        return Results.Created($"/menuitems/{newItem.MenuItemId}", newItem);
+    })
+    .WithName("CreateMenuItem")
+    .WithTags("Menu");
 
 app.Run();

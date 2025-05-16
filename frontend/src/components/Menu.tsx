@@ -1,194 +1,220 @@
 "use client";
 
 import type React from "react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { MenuItem } from "../types";
-import { Edit, Save, X } from "lucide-react";
+import { PencilIcon, CheckIcon, XIcon } from "lucide-react";
 
 interface MenuProps {
   menuItems: MenuItem[];
-  updateMenuItem: (itemId: number, updatedItem: Partial<MenuItem>) => void;
+  updateMenuItem: (id: number, updatedItem: Partial<MenuItem>) => void;
 }
 
 const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<Partial<MenuItem>>({});
+  const [formData, setFormData] = useState<Partial<MenuItem>>({});
 
-  const categories = ["Starter", "Main", "Side", "Dessert", "Drink"];
+  // Group and sort menu items by category
+  const groupedMenuItems = useMemo(() => {
+    // Sort items by categoryId first
+    const sortedItems = [...menuItems].sort(
+      (a, b) => (a.categoryId || 0) - (b.categoryId || 0)
+    );
 
-  const handleEditClick = (item: MenuItem) => {
-    setEditingItemId(item.menuItemId);
-    setEditForm({ ...item });
-  };
+    // Group items by category
+    const grouped: Record<string, MenuItem[]> = {};
 
-  const handleSaveClick = () => {
-    if (editingItemId && editForm) {
-      updateMenuItem(editingItemId, editForm);
-      setEditingItemId(null);
-      setEditForm({});
-    }
-  };
-
-  const handleCancelClick = () => {
-    setEditingItemId(null);
-    setEditForm({});
-  };
-
-  const handleInputChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
-  ) => {
-    const { name, value } = e.target;
-    setEditForm({
-      ...editForm,
-      [name]: name === "price" ? Number.parseFloat(value) : value,
+    sortedItems.forEach((item) => {
+      const categoryName = item.categoryName || "Uncategorized";
+      if (!grouped[categoryName]) {
+        grouped[categoryName] = [];
+      }
+      grouped[categoryName].push(item);
     });
+
+    return grouped;
+  }, [menuItems]);
+
+  const handleEdit = (item: MenuItem) => {
+    setEditingItemId(item.menuItemId);
+    setFormData(item);
   };
 
-  const groupedItems = menuItems.reduce((acc, item) => {
-    if (!acc[item.categoryId]) {
-      acc[item.categoryId] = [];
+  const handleCancel = () => {
+    setEditingItemId(null);
+    setFormData({});
+  };
+
+  const handleSave = async () => {
+    if (!editingItemId) return;
+
+    try {
+      const token = localStorage.getItem("token");
+
+      const response = await fetch(
+        `http://localhost:5123/menuitems/${editingItemId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(formData),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Neuspješno ažuriranje");
+      }
+
+      updateMenuItem(editingItemId, formData);
+      handleCancel();
+    } catch (error) {
+      console.error("Greška pri spremanju:", error);
     }
-    acc[item.categoryId].push(item);
-    return acc;
-  }, {} as Record<string, MenuItem[]>);
+  };
+
+  const handleChange = (field: keyof MenuItem, value: any) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
 
   return (
-    <div>
-      <h2 className="text-lg font-medium text-gray-900 mb-4">Menu</h2>
+    <div className="space-y-8">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-800">Menu Items</h2>
+        <button className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg transition-colors shadow-sm">
+          + Add Item
+        </button>
+      </div>
 
-      {Object.entries(groupedItems).map(([category, items]) => (
-        <div key={category} className="mb-8">
-          <h3 className="text-md font-medium text-gray-700 mb-3">{category}</h3>
-          <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            <ul className="divide-y divide-gray-200">
-              {items.map((item) => (
-                <li key={item.menuItemId}>
-                  {editingItemId === item.menuItemId ? (
-                    <div className="px-4 py-4 sm:px-6">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div>
-                          <label
-                            htmlFor="name"
-                            className="block text-sm font-medium text-gray-700"
-                          >
-                            Name
-                          </label>
-                          <input
-                            type="text"
-                            name="name"
-                            id="name"
-                            value={editForm.name || ""}
-                            onChange={handleInputChange}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label
-                            htmlFor="price"
-                            className="block text-sm font-medium text-gray-700"
-                          >
-                            Price
-                          </label>
-                          <input
-                            type="number"
-                            name="price"
-                            id="price"
-                            step="0.01"
-                            value={editForm.price || ""}
-                            onChange={handleInputChange}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label
-                            htmlFor="description"
-                            className="block text-sm font-medium text-gray-700"
-                          >
-                            Description
-                          </label>
-                          <textarea
-                            name="description"
-                            id="description"
-                            rows={2}
-                            value={editForm.description || ""}
-                            onChange={handleInputChange}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label
-                            htmlFor="category"
-                            className="block text-sm font-medium text-gray-700"
-                          >
-                            Category
-                          </label>
-                          <select
-                            name="category"
-                            id="category"
-                            value={editForm.category?.name || ""}
-                            onChange={handleInputChange}
-                            className="mt-1 block w-full bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                          >
-                            {categories.map((cat) => (
-                              <option key={cat} value={cat}>
-                                {cat}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+      {Object.entries(groupedMenuItems).map(([categoryName, items]) => (
+        <div key={categoryName} className="space-y-4">
+          <h3 className="text-xl font-semibold text-gray-700 border-b pb-2">
+            {categoryName}
+          </h3>
+
+          <div className="space-y-2">
+            {items.map((item) => (
+              <div
+                key={item.menuItemId}
+                className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden transition-all hover:shadow-md"
+              >
+                {editingItemId === item.menuItemId ? (
+                  // Edit mode
+                  <div className="p-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Name
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.name || ""}
+                          onChange={(e) => handleChange("name", e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                        />
                       </div>
-                      <div className="mt-4 flex justify-end">
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Description
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.description || ""}
+                          onChange={(e) =>
+                            handleChange("description", e.target.value)
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Price (€)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.price || ""}
+                          onChange={(e) =>
+                            handleChange(
+                              "price",
+                              Number.parseFloat(e.target.value)
+                            )
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Category ID
+                        </label>
+                        <input
+                          type="number"
+                          value={formData.categoryId || ""}
+                          onChange={(e) =>
+                            handleChange(
+                              "categoryId",
+                              Number.parseInt(e.target.value)
+                            )
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end space-x-2 pt-2">
+                      <button
+                        onClick={handleCancel}
+                        className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      >
+                        <XIcon className="h-4 w-4 mr-1" />
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSave}
+                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-900 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      >
+                        <CheckIcon className="h-4 w-4 mr-1" />
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  // View mode - row layout
+                  <div className="flex items-center p-3">
+                    <div className="flex-grow grid grid-cols-12 gap-2">
+                      <div className="flex items-center col-span-3">
+                        <h4 className="font-medium text-gray-900">
+                          {item.name}
+                        </h4>
+                      </div>
+                      <div className="col-span-6 flex items-center text-sm text-gray-600 truncate">
+                        {item.description}
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span className="font-semibold text-gray-900 ">
+                          {item.price.toFixed(2)} €
+                        </span>
+                      </div>
+                      <div className="col-span-1 flex justify-end">
                         <button
-                          type="button"
-                          onClick={handleCancelClick}
-                          className="mr-2 inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          onClick={() => handleEdit(item)}
+                          className="inline-flex items-center p-1.5 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
                         >
-                          <X className="h-4 w-4 mr-1" />
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSaveClick}
-                          className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                        >
-                          <Save className="h-4 w-4 mr-1" />
-                          Save
+                          <PencilIcon className="h-4 w-4" />
+                          <span className="sr-only">Edit</span>
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    <div className="px-4 py-4 sm:px-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <p className="text-sm font-medium text-indigo-600 truncate">
-                            {item.name}
-                          </p>
-                          <p className="ml-2 text-sm text-gray-500">
-                            ${item.price.toFixed(2)}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleEditClick(item)}
-                          className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                        >
-                          <Edit className="h-3.5 w-3.5 mr-1" />
-                          Edit
-                        </button>
-                      </div>
-                      <div className="mt-2 sm:flex sm:justify-between">
-                        <div className="sm:flex">
-                          <p className="flex items-center text-sm text-gray-500">
-                            {item.description}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       ))}
