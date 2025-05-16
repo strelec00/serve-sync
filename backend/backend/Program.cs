@@ -260,5 +260,20 @@ app.MapPost("/menuitems", async (MenuItem newItem, RestaurantContext db) =>
     })
     .WithName("CreateMenuItem")
     .WithTags("Menu");
+app.MapDelete("/menuitems/{id:int}", async (int id, RestaurantContext db) =>
+    {
+        var item = await db.MenuItems.FindAsync(id);
+        if (item == null)
+        {
+            return Results.NotFound();
+        }
+
+        db.MenuItems.Remove(item);
+        await db.SaveChangesAsync();
+
+        return Results.NoContent();
+    })
+    .WithName("DeleteMenuItem")
+    .WithTags("Menu");
 
 app.Run();
