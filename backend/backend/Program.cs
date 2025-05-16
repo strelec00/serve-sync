@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text.Json.Serialization;
 using backend.Data;
+using backend.DTO;
 using backend.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -69,9 +70,29 @@ app.UseAuthorization();
 // ---------------- ENDPOINTI ---------------- //
 
 app.MapGet("/tables", async (RestaurantContext db) =>
-        await db.Tables.ToListAsync())
+    {
+        var tables = await db.Tables
+            .Select(t => new {
+                t.TableId,
+                t.Capacity,
+                t.Status,
+                t.UserId,
+                UserName = t.User != null ? t.User.Username : null,  // ako postoji korisnik
+                t.RestaurantId,
+                RestaurantName = t.Restaurant.Name,                  // ako postoji restoran
+                Orders = t.Orders.Select(o => new {
+                    o.OrderId,
+                    o.Status,
+                    o.Name
+                }).ToList()
+            })
+            .ToListAsync();
+
+        return Results.Ok(tables);
+    })
     .WithName("GetTables")
     .WithTags("Tables");
+
 
 app.MapPost("/tables", async (Table table, RestaurantContext db) =>
 {
@@ -119,16 +140,65 @@ app.MapPost("/users/login", async (LoginRequest login, RestaurantContext db) =>
 .WithTags("Users");
 
 app.MapGet("/orders", async (RestaurantContext db) =>
-        await db.Orders.ToListAsync())
-    .WithName("GetOrders")
+{
+    var orders = await db.Orders
+        .Select(o => new {
+            o.OrderId,
+            o.Name,
+            o.Status,
+            o.TableId,
+            TableNumber = o.Table.Capacity,       // ako postoji
+            o.UserId,
+            UserName = o.User.Username,         // ako postoji
+            OrderItems = o.OrderItems.Select(oi => new {
+                oi.OrderItemId,
+                oi.MenuItemId,
+                oi.Quantity,
+                MenuItem = new {
+                    oi.MenuItem.MenuItemId,
+                    oi.MenuItem.Name,
+                    oi.MenuItem.Price
+                }
+            }).ToList()
+        })
+        .ToListAsync();
+
+    return Results.Ok(orders);
+});
+
+
+app.MapPost("/orders", async (OrderCreateDto dto, RestaurantContext db) =>
+    {
+        var order = new Order
+        {
+            Name = dto.Name,
+            UserId = dto.UserId,
+            TableId = dto.TableId,
+            RestaurantId = dto.RestaurantId,
+            Status = OrderStatus.Ordered,
+            OrderItems = dto.OrderItems.Select(i => new OrderItem
+            {
+                MenuItemId = i.MenuItemId,
+                Quantity = i.Quantity
+            }).ToList()
+        };
+
+        db.Orders.Add(order);
+        await db.SaveChangesAsync();
+
+        return Results.Created($"/orders/{order.OrderId}", new
+        {
+            order.OrderId,
+            order.Name,
+            order.Status,
+            order.UserId,
+            order.TableId,
+            order.RestaurantId
+        });
+    })
+    .WithName("CreateOrder")
     .WithTags("Orders");
 
-app.MapPost("/orders", async (Order order, RestaurantContext db) =>
-{
-    db.Orders.Add(order);
-    await db.SaveChangesAsync();
-    return Results.Created($"/orders/{order.OrderId}", order);
-}).WithName("CreateOrder").WithTags("Orders");
 
 app.MapPut("/orders/{id}/status", async (int id, OrderStatus status, RestaurantContext db) =>
 {

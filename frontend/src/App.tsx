@@ -7,7 +7,7 @@ import ActiveOrders from "./components/ActiveOrders";
 import Tables from "./components/Tables";
 import Menu from "./components/Menu";
 import LoginForm from "./components/LoginForm";
-import type { Order, Table, MenuItem } from "./types";
+import type { Order, Table, MenuItem, OrderStatus, TableStatus } from "./types";
 import { jwtDecode } from "jwt-decode";
 
 import "./index.css";
@@ -40,8 +40,6 @@ const App: React.FC = () => {
 
         if (decoded.role === "3") {
           setActiveTab("tables");
-        } else if (decoded.role === "2") {
-          setActiveTab("orders");
         } else {
           setActiveTab("orders");
         }
@@ -87,26 +85,26 @@ const App: React.FC = () => {
     }
   }, [isAuthenticated]);
 
-  const updateOrderStatus = (orderId: string, newStatus: Order["status"]) => {
+  const updateOrderStatus = (orderId: number, newStatus: OrderStatus) => {
     setOrders(
       orders.map((order) =>
-        order.id === orderId ? { ...order, status: newStatus } : order
+        order.orderId === orderId ? { ...order, status: newStatus } : order
       )
     );
   };
 
-  const updateTableStatus = (tableId: string, newStatus: Table["status"]) => {
+  const updateTableStatus = (tableId: number, newStatus: TableStatus) => {
     setTables(
       tables.map((table) =>
-        table.id === tableId ? { ...table, status: newStatus } : table
+        table.tableId === tableId ? { ...table, status: newStatus } : table
       )
     );
   };
 
-  const updateMenuItem = (itemId: string, updatedItem: Partial<MenuItem>) => {
+  const updateMenuItem = (itemId: number, updatedItem: Partial<MenuItem>) => {
     setMenuItems(
       menuItems.map((item) =>
-        item.id === itemId ? { ...item, ...updatedItem } : item
+        item.menuItemId === itemId ? { ...item, ...updatedItem } : item
       )
     );
   };
@@ -203,8 +201,8 @@ const App: React.FC = () => {
               {activeTab === "tables" && (
                 <Tables
                   tables={tables}
+                  orders={orders}
                   updateTableStatus={updateTableStatus}
-                  userRole={userRole}
                 />
               )}
               {activeTab === "menu" && (

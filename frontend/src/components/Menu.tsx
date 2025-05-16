@@ -7,17 +7,17 @@ import { Edit, Save, X } from "lucide-react";
 
 interface MenuProps {
   menuItems: MenuItem[];
-  updateMenuItem: (itemId: string, updatedItem: Partial<MenuItem>) => void;
+  updateMenuItem: (itemId: number, updatedItem: Partial<MenuItem>) => void;
 }
 
 const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Partial<MenuItem>>({});
 
   const categories = ["Starter", "Main", "Side", "Dessert", "Drink"];
 
   const handleEditClick = (item: MenuItem) => {
-    setEditingItemId(item.id);
+    setEditingItemId(item.menuItemId);
     setEditForm({ ...item });
   };
 
@@ -47,10 +47,10 @@ const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
   };
 
   const groupedItems = menuItems.reduce((acc, item) => {
-    if (!acc[item.category]) {
-      acc[item.category] = [];
+    if (!acc[item.categoryId]) {
+      acc[item.categoryId] = [];
     }
-    acc[item.category].push(item);
+    acc[item.categoryId].push(item);
     return acc;
   }, {} as Record<string, MenuItem[]>);
 
@@ -64,8 +64,8 @@ const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
               {items.map((item) => (
-                <li key={item.id}>
-                  {editingItemId === item.id ? (
+                <li key={item.menuItemId}>
+                  {editingItemId === item.menuItemId ? (
                     <div className="px-4 py-4 sm:px-6">
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
@@ -127,7 +127,7 @@ const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
                           <select
                             name="category"
                             id="category"
-                            value={editForm.category || ""}
+                            value={editForm.category?.name || ""}
                             onChange={handleInputChange}
                             className="mt-1 block w-full bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                           >
