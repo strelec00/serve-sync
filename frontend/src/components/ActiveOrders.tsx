@@ -68,9 +68,7 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
             <div className="px-4 py-5 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
-                  <span className="text-lg font-medium text-gray-900">
-                    Table {order.tableNumber}
-                  </span>
+                  <span className="text-lg font-medium text-gray-900">jan</span>
                   <span
                     className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
                       order.status
@@ -86,9 +84,9 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
                   Items:
                 </h3>
                 <ul className="space-y-1">
-                  {order.items.map((item, index) => (
+                  {order.items?.map((item, index) => (
                     <li key={index} className="text-sm text-gray-700">
-                      {item}
+                      {item.menuItemName} x {item.quantity}
                     </li>
                   ))}
                 </ul>
@@ -97,7 +95,7 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
                 <div className="flex items-center">
                   {getStatusIcon(order.status)}
                   <span className="ml-1 text-sm text-gray-500">
-                    {order.status === "preparing" && "In kitchen"}
+                    v{order.status === "preparing" && "In kitchen"}
                     {order.status === "ready" && "Ready to serve"}
                     {order.status === "served" && "Served to table"}
                   </span>

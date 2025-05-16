@@ -8,7 +8,15 @@ import Tables from "./components/Tables";
 import Menu from "./components/Menu";
 import LoginForm from "./components/LoginForm";
 import type { Order, Table, MenuItem } from "./types";
+import { jwtDecode } from "jwt-decode";
+
 import "./index.css";
+
+interface JwtPayload {
+  id: string;
+  role: string;
+  exp: number;
+}
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"orders" | "tables" | "menu">(
@@ -16,113 +24,68 @@ const App: React.FC = () => {
   );
   const [showLoginForm, setShowLoginForm] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    setIsAuthenticated(!!token);
+    if (token) {
+      setIsAuthenticated(true);
+      try {
+        const decoded = jwtDecode<JwtPayload>(token);
+        setUserRole(decoded.role);
+
+        if (decoded.role === "3") {
+          setActiveTab("tables");
+        } else if (decoded.role === "2") {
+          setActiveTab("orders");
+        } else {
+          setActiveTab("orders");
+        }
+      } catch (err) {
+        console.error("Nevaljan token:", err);
+        setIsAuthenticated(false);
+      }
+    }
   }, []);
 
-  const [orders, setOrders] = useState<Order[]>([
-    {
-      id: "1",
-      tableNumber: 3,
-      items: ["Margherita Pizza", "Caesar Salad", "Coke"],
-      status: "preparing",
-      time: "18:30",
-    },
-    {
-      id: "2",
-      tableNumber: 5,
-      items: ["Pasta Carbonara", "Garlic Bread", "Tiramisu"],
-      status: "ready",
-      time: "18:45",
-    },
-    {
-      id: "3",
-      tableNumber: 2,
-      items: ["Chicken Burger", "Fries", "Milkshake"],
-      status: "served",
-      time: "19:00",
-    },
-    {
-      id: "4",
-      tableNumber: 7,
-      items: ["Steak", "Mashed Potatoes", "Wine"],
-      status: "preparing",
-      time: "19:15",
-    },
-  ]);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const headers: Record<string, string> = token
+          ? { Authorization: `Bearer ${token}` }
+          : {};
 
-  const [tables, setTables] = useState<Table[]>([
-    { id: "1", number: 1, status: "available", capacity: 2 },
-    { id: "2", number: 2, status: "occupied", capacity: 4 },
-    { id: "3", number: 3, status: "occupied", capacity: 4 },
-    { id: "4", number: 4, status: "reserved", capacity: 6 },
-    { id: "5", number: 5, status: "occupied", capacity: 2 },
-    { id: "6", number: 6, status: "available", capacity: 4 },
-    { id: "7", number: 7, status: "occupied", capacity: 8 },
-    { id: "8", number: 8, status: "available", capacity: 2 },
-  ]);
+        const [ordersRes, tablesRes, menuRes] = await Promise.all([
+          fetch("http://localhost:5123/orders", { headers }),
+          fetch("http://localhost:5123/tables", { headers }),
+          fetch("http://localhost:5123/menuitems", { headers }),
+        ]);
 
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([
-    {
-      id: "1",
-      name: "Margherita Pizza",
-      description: "Classic pizza with tomato sauce, mozzarella, and basil",
-      price: 12.99,
-      category: "Main",
-    },
-    {
-      id: "2",
-      name: "Caesar Salad",
-      description:
-        "Romaine lettuce with Caesar dressing, croutons, and parmesan",
-      price: 8.99,
-      category: "Starter",
-    },
-    {
-      id: "3",
-      name: "Pasta Carbonara",
-      description: "Spaghetti with creamy sauce, bacon, and parmesan",
-      price: 14.99,
-      category: "Main",
-    },
-    {
-      id: "4",
-      name: "Tiramisu",
-      description: "Classic Italian dessert with coffee and mascarpone",
-      price: 6.99,
-      category: "Dessert",
-    },
-    {
-      id: "5",
-      name: "Chicken Burger",
-      description: "Grilled chicken breast with lettuce, tomato, and mayo",
-      price: 10.99,
-      category: "Main",
-    },
-    {
-      id: "6",
-      name: "Garlic Bread",
-      description: "Toasted bread with garlic butter and herbs",
-      price: 4.99,
-      category: "Side",
-    },
-    {
-      id: "7",
-      name: "Steak",
-      description: "Grilled ribeye steak with herb butter",
-      price: 24.99,
-      category: "Main",
-    },
-    {
-      id: "8",
-      name: "Cheesecake",
-      description: "New York style cheesecake with berry compote",
-      price: 7.99,
-      category: "Dessert",
-    },
-  ]);
+        if (!ordersRes.ok || !tablesRes.ok || !menuRes.ok) {
+          throw new Error("Greška pri dohvaćanju podataka");
+        }
+
+        const ordersData = await ordersRes.json();
+        const tablesData = await tablesRes.json();
+        const menuData = await menuRes.json();
+
+        setOrders(ordersData);
+        setTables(tablesData);
+        setMenuItems(menuData);
+      } catch (error) {
+        console.error("Greška pri dohvaćanju podataka:", error);
+      }
+    };
+
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [isAuthenticated]);
 
   const updateOrderStatus = (orderId: string, newStatus: Order["status"]) => {
     setOrders(
@@ -166,6 +129,7 @@ const App: React.FC = () => {
                   onClick={() => {
                     localStorage.removeItem("token");
                     setIsAuthenticated(false);
+                    setUserRole(null);
                   }}
                 >
                   Logout
@@ -189,28 +153,33 @@ const App: React.FC = () => {
           <div className="bg-white shadow rounded-lg">
             <div className="border-b border-gray-200">
               <nav className="-mb-px flex">
-                <button
-                  onClick={() => setActiveTab("orders")}
-                  className={`${
-                    activeTab === "orders"
-                      ? "border-indigo-500 text-indigo-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  } whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm flex items-center`}
-                >
-                  <LayoutDashboard className="h-4 w-4 mr-2" />
-                  Active Orders
-                </button>
-                <button
-                  onClick={() => setActiveTab("tables")}
-                  className={`${
-                    activeTab === "tables"
-                      ? "border-indigo-500 text-indigo-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  } whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm flex items-center`}
-                >
-                  <Utensils className="h-4 w-4 mr-2" />
-                  Tables
-                </button>
+                {(userRole === "1" || userRole === "2") && (
+                  <button
+                    onClick={() => setActiveTab("orders")}
+                    className={`${
+                      activeTab === "orders"
+                        ? "border-indigo-500 text-indigo-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    } whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm flex items-center`}
+                  >
+                    <LayoutDashboard className="h-4 w-4 mr-2" />
+                    Active Orders
+                  </button>
+                )}
+                {(userRole === "1" || userRole === "3") && (
+                  <button
+                    onClick={() => setActiveTab("tables")}
+                    className={`${
+                      activeTab === "tables"
+                        ? "border-indigo-500 text-indigo-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    } whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm flex items-center`}
+                  >
+                    <Utensils className="h-4 w-4 mr-2" />
+                    Tables
+                  </button>
+                )}
+
                 <button
                   onClick={() => setActiveTab("menu")}
                   className={`${
@@ -232,7 +201,11 @@ const App: React.FC = () => {
                 />
               )}
               {activeTab === "tables" && (
-                <Tables tables={tables} updateTableStatus={updateTableStatus} />
+                <Tables
+                  tables={tables}
+                  updateTableStatus={updateTableStatus}
+                  userRole={userRole}
+                />
               )}
               {activeTab === "menu" && (
                 <Menu menuItems={menuItems} updateMenuItem={updateMenuItem} />
@@ -246,7 +219,23 @@ const App: React.FC = () => {
       {showLoginForm && (
         <LoginForm
           onClose={() => setShowLoginForm(false)}
-          onLoginSuccess={() => setIsAuthenticated(true)}
+          onLoginSuccess={() => {
+            setIsAuthenticated(true);
+            const token = localStorage.getItem("token");
+            if (token) {
+              try {
+                const decoded = jwtDecode<JwtPayload>(token);
+                setUserRole(decoded.role);
+                if (decoded.role === "3") {
+                  setActiveTab("tables");
+                } else {
+                  setActiveTab("orders");
+                }
+              } catch (err) {
+                console.error("Nevaljan token:", err);
+              }
+            }
+          }}
         />
       )}
     </div>

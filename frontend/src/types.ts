@@ -1,15 +1,22 @@
+export type OrderItem = {
+  orderItemId: number;
+  menuItemId: number;
+  quantity: number;
+  menuItemName: string;
+};
+
 export type Order = {
-  id: string
-  tableNumber: number
-  items: string[]
-  status: "preparing" | "ready" | "served"
-  time: string
-}
+  id: string;
+  tableNumber: number;
+  items: OrderItem[]; // <-- moraš koristiti items, ne orderItems!
+  status: "ordered"| "preparing" | "ready" | "served";
+  time: string;
+};
 
 export type Table = {
   id: string
   number: number
-  status: "available" | "occupied" | "reserved"
+  status: "free" |"available" | "occupied" | "reserved"
   capacity: number
 }
 
