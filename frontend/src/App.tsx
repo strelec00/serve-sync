@@ -6,7 +6,14 @@ import ActiveOrders from "./components/ActiveOrders";
 import Tables from "./components/Tables";
 import Menu from "./components/Menu";
 import LoginForm from "./components/LoginForm";
-import type { Order, Table, MenuItem, OrderStatus, TableStatus } from "./types";
+import type {
+  Order,
+  Table,
+  MenuItem,
+  OrderStatus,
+  TableStatus,
+  Category,
+} from "./types";
 import { jwtDecode } from "jwt-decode";
 
 import "./index.css";
@@ -28,6 +35,7 @@ const App: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -60,23 +68,32 @@ const App: React.FC = () => {
           : {};
 
         // Dohvati sve potrebne podatke (orders, tables, menuitems)
-        const [ordersRes, tablesRes, menuRes] = await Promise.all([
-          fetch("http://localhost:5123/orders", { headers }),
-          fetch("http://localhost:5123/tables", { headers }),
-          fetch("http://localhost:5123/menuitems", { headers }),
-        ]);
+        const [ordersRes, tablesRes, menuRes, categoriesRes] =
+          await Promise.all([
+            fetch("http://localhost:5123/orders", { headers }),
+            fetch("http://localhost:5123/tables", { headers }),
+            fetch("http://localhost:5123/menuitems", { headers }),
+            fetch("http://localhost:5123/categories", { headers }), // novi endpoint
+          ]);
 
-        if (!ordersRes.ok || !tablesRes.ok || !menuRes.ok) {
+        if (
+          !ordersRes.ok ||
+          !tablesRes.ok ||
+          !menuRes.ok ||
+          !categoriesRes.ok
+        ) {
           throw new Error("Greška pri dohvaćanju podataka");
         }
 
         const ordersData = await ordersRes.json();
         const tablesData = await tablesRes.json();
         const menuData = await menuRes.json();
+        const categoriesData = await categoriesRes.json();
 
         setOrders(ordersData);
         setTables(tablesData);
         setMenuItems(menuData);
+        setCategories(categoriesData);
       } catch (error) {
         console.error("Greška pri dohvaćanju podataka:", error);
       }
@@ -103,11 +120,23 @@ const App: React.FC = () => {
   };
 
   const updateMenuItem = (itemId: number, updatedItem: Partial<MenuItem>) => {
-    setMenuItems((prev) =>
-      prev.map((item) =>
-        item.menuItemId === itemId ? { ...item, ...updatedItem } : item
-      )
-    );
+    setMenuItems((prev) => {
+      // Ako je stavka "izbrisana"
+      if ((updatedItem as any).deleted) {
+        return prev.filter((item) => item.menuItemId !== itemId);
+      }
+
+      const index = prev.findIndex((item) => item.menuItemId === itemId);
+      if (index !== -1) {
+        // Ažuriraj postojeću
+        const updated = [...prev];
+        updated[index] = { ...updated[index], ...updatedItem };
+        return updated;
+      } else {
+        // Dodaj novu
+        return [...prev, updatedItem as MenuItem];
+      }
+    });
   };
 
   return (
@@ -207,7 +236,11 @@ const App: React.FC = () => {
                 />
               )}
               {activeTab === "menu" && (
-                <Menu menuItems={menuItems} updateMenuItem={updateMenuItem} />
+                <Menu
+                  menuItems={menuItems}
+                  updateMenuItem={updateMenuItem}
+                  categories={categories}
+                />
               )}
             </div>
           </div>

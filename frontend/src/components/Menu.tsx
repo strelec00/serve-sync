@@ -2,15 +2,20 @@
 
 import type React from "react";
 import { useState, useMemo } from "react";
-import type { MenuItem } from "../types";
+import type { Category, MenuItem } from "../types";
 import { PencilIcon, CheckIcon, XIcon, TrashIcon } from "lucide-react";
 
 interface MenuProps {
   menuItems: MenuItem[];
   updateMenuItem: (id: number, updatedItem: Partial<MenuItem>) => void;
+  categories: Category[]; // Dodaj ovo
 }
 
-const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
+const Menu: React.FC<MenuProps> = ({
+  menuItems,
+  updateMenuItem,
+  categories,
+}) => {
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [formData, setFormData] = useState<Partial<MenuItem>>({});
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
@@ -24,9 +29,9 @@ const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
   // Group and sort menu items by category
   const groupedMenuItems = useMemo(() => {
     // Sort items by categoryId first
-    const sortedItems = [...menuItems].sort(
-      (a, b) => (a.categoryId || 0) - (b.categoryId || 0)
-    );
+    const sortedItems = [...menuItems]
+      .filter((item) => !(item as any).deleted) // filtriraj "izbrisane"
+      .sort((a, b) => (a.categoryId || 0) - (b.categoryId || 0));
 
     // Group items by category
     const grouped: Record<string, MenuItem[]> = {};
@@ -103,10 +108,14 @@ const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
       }
 
       const createdItem = await response.json();
-
+      const category = categories.find(
+        (c) => c.categoryId === createdItem.categoryId
+      );
+      if (category) {
+        createdItem.categoryName = category.name;
+      }
       // Add the new item to the list
       updateMenuItem(createdItem.menuItemId, createdItem);
-
       // Reset form and hide it
       setNewItemData({
         name: "",
@@ -224,16 +233,20 @@ const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
                 <select
                   value={newItemData.categoryId || ""}
                   onChange={(e) =>
-                    handleNewItemChange("categoryId", Number(e.target.value))
+                    handleNewItemChange(
+                      "categoryId",
+                      Number.parseInt(e.target.value)
+                    )
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                 >
-                  <option value="" disabled>
-                    Select category
-                  </option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
+                  <option value="">Select category</option>
+                  {categories.map((category) => (
+                    <option
+                      key={category.categoryId}
+                      value={category.categoryId}
+                    >
+                      {category.name}
                     </option>
                   ))}
                 </select>
@@ -321,13 +334,11 @@ const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
                           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                         />
                       </div>
-
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Category ID
+                          Category
                         </label>
-                        <input
-                          type="number"
+                        <select
                           value={formData.categoryId || ""}
                           onChange={(e) =>
                             handleChange(
@@ -336,7 +347,17 @@ const Menu: React.FC<MenuProps> = ({ menuItems, updateMenuItem }) => {
                             )
                           }
                           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-                        />
+                        >
+                          <option value="">Select category</option>
+                          {categories.map((category) => (
+                            <option
+                              key={category.categoryId}
+                              value={category.categoryId}
+                            >
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 

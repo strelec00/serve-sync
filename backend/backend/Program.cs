@@ -93,13 +93,25 @@ app.MapGet("/tables", async (RestaurantContext db) =>
     .WithName("GetTables")
     .WithTags("Tables");
 
-
 app.MapPost("/tables", async (Table table, RestaurantContext db) =>
 {
     db.Tables.Add(table);
     await db.SaveChangesAsync();
     return Results.Created($"/tables/{table.TableId}", table);
 }).WithName("AddTable").WithTags("Tables");
+
+app.MapDelete("/tables/{id:int}", async (int id, RestaurantContext db) =>
+    {
+        var table = await db.Tables.FindAsync(id);
+        if (table is null) return Results.NotFound();
+
+        db.Tables.Remove(table);
+        await db.SaveChangesAsync();
+
+        return Results.NoContent();
+    })
+    .WithName("DeleteTable")
+    .WithTags("Tables");
 
 app.MapPost("/users/register", async (User user, RestaurantContext db) =>
 {
@@ -234,6 +246,17 @@ app.MapGet("/menuitems", async (RestaurantContext db) =>
         })
         .ToListAsync())
     .WithName("GetMenuItems")
+    .WithTags("Menu");
+
+app.MapGet("/categories", async (RestaurantContext db) =>
+        await db.Categories
+            .Select(c => new
+            {
+                c.CategoryId,
+                c.Name
+            })
+            .ToListAsync())
+    .WithName("GetCategories")
     .WithTags("Menu");
 
 
