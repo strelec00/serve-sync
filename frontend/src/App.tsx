@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { LayoutDashboard, Utensils, BookOpen } from "lucide-react";
+import type React from "react";
+import { useState, useEffect } from "react";
+import { LayoutDashboard, Utensils, BookOpen, UserPlus } from "lucide-react";
 import ActiveOrders from "./components/ActiveOrders";
 import Tables from "./components/Tables";
 import Menu from "./components/Menu";
@@ -17,6 +18,7 @@ import type {
 import { jwtDecode } from "jwt-decode";
 
 import "./index.css";
+import RegisterForm from "./components/RegisterForm";
 
 interface JwtPayload {
   id: string;
@@ -28,6 +30,8 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"orders" | "tables" | "menu">(
     "orders"
   );
+
+  const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [showLoginForm, setShowLoginForm] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -67,13 +71,13 @@ const App: React.FC = () => {
           ? { Authorization: `Bearer ${token}` }
           : {};
 
-        // Dohvati sve potrebne podatke (orders, tables, menuitems)
+        // Fetch all required data (orders, tables, menuitems)
         const [ordersRes, tablesRes, menuRes, categoriesRes] =
           await Promise.all([
             fetch("http://localhost:5123/orders", { headers }),
             fetch("http://localhost:5123/tables", { headers }),
             fetch("http://localhost:5123/menuitems", { headers }),
-            fetch("http://localhost:5123/categories", { headers }), // novi endpoint
+            fetch("http://localhost:5123/categories", { headers }),
           ]);
 
         if (
@@ -82,7 +86,7 @@ const App: React.FC = () => {
           !menuRes.ok ||
           !categoriesRes.ok
         ) {
-          throw new Error("Greška pri dohvaćanju podataka");
+          throw new Error("Error fetching data");
         }
 
         const ordersData = await ordersRes.json();
@@ -95,18 +99,20 @@ const App: React.FC = () => {
         setMenuItems(menuData);
         setCategories(categoriesData);
       } catch (error) {
-        console.error("Greška pri dohvaćanju podataka:", error);
+        console.error("Error fetching data:", error);
       }
     };
 
     fetchData();
   }, [isAuthenticated]);
 
-  // Update funkcije za UI i state
-  const updateOrderStatus = (orderId: number, newStatus: OrderStatus) => {
+  // Update functions for UI and state
+  const updateOrderStatus = (orderId: number, newStatus: number) => {
     setOrders((prev) =>
       prev.map((order) =>
-        order.orderId === orderId ? { ...order, status: newStatus } : order
+        order.orderId === orderId
+          ? { ...order, status: newStatus as unknown as OrderStatus }
+          : order
       )
     );
   };
@@ -121,19 +127,19 @@ const App: React.FC = () => {
 
   const updateMenuItem = (itemId: number, updatedItem: Partial<MenuItem>) => {
     setMenuItems((prev) => {
-      // Ako je stavka "izbrisana"
+      // If item is "deleted"
       if ((updatedItem as any).deleted) {
         return prev.filter((item) => item.menuItemId !== itemId);
       }
 
       const index = prev.findIndex((item) => item.menuItemId === itemId);
       if (index !== -1) {
-        // Ažuriraj postojeću
+        // Update existing
         const updated = [...prev];
         updated[index] = { ...updated[index], ...updatedItem };
         return updated;
       } else {
-        // Dodaj novu
+        // Add new
         return [...prev, updatedItem as MenuItem];
       }
     });
@@ -150,7 +156,7 @@ const App: React.FC = () => {
                 Restaurant Dashboard
               </h1>
             </div>
-            <div className="flex items-center">
+            <div className="flex items-center space-x-4">
               {isAuthenticated ? (
                 <button
                   className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
@@ -163,12 +169,21 @@ const App: React.FC = () => {
                   Logout
                 </button>
               ) : (
-                <button
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-                  onClick={() => setShowLoginForm(true)}
-                >
-                  Login
-                </button>
+                <>
+                  <button
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                    onClick={() => setShowLoginForm(true)}
+                  >
+                    Login
+                  </button>
+                  <button
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center"
+                    onClick={() => setShowRegisterForm(true)}
+                  >
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Register
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -252,6 +267,10 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {showRegisterForm && (
+        <RegisterForm onClose={() => setShowRegisterForm(false)} />
+      )}
+
       {/* LOGIN FORM */}
       {showLoginForm && (
         <LoginForm
@@ -269,7 +288,7 @@ const App: React.FC = () => {
                   setActiveTab("orders");
                 }
               } catch (err) {
-                console.error("Nevaljan token:", err);
+                console.error("Invalid token:", err);
               }
             }
           }}
