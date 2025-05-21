@@ -232,7 +232,12 @@ const App: React.FC = () => {
                 <Tables
                   tables={tables}
                   orders={orders}
+                  menuItems={menuItems}
                   updateTableStatus={updateTableStatus}
+                  addTable={(table) => setTables((prev) => [...prev, table])}
+                  deleteTable={(id) =>
+                    setTables((prev) => prev.filter((t) => t.tableId !== id))
+                  }
                 />
               )}
               {activeTab === "menu" && (
