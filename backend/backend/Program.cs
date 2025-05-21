@@ -211,26 +211,44 @@ app.MapPost("/orders", async (OrderCreateDto dto, RestaurantContext db) =>
     .WithName("CreateOrder")
     .WithTags("Orders");
 
+app.MapPut("/orders/{id}", async (int id, OrderUpdateDto dto, RestaurantContext db) =>
+    {
+        var order = await db.Orders
+            .Include(o => o.OrderItems)
+            .FirstOrDefaultAsync(o => o.OrderId == id);
 
-app.MapPut("/orders/{id}/status", async (int id, OrderStatus status, RestaurantContext db) =>
-{
-    var order = await db.Orders.FindAsync(id);
-    if (order == null) return Results.NotFound();
+        if (order == null)
+            return Results.NotFound();
 
-    order.Status = status;
-    await db.SaveChangesAsync();
-    return Results.Ok(order);
-}).WithName("ChangeOrderStatus").WithTags("Orders");
+        // Ažuriraj osnovna polja
+        order.Name = dto.Name;
+        order.UserId = dto.UserId;
+        order.TableId = dto.TableId;
+        order.Status = dto.Status;
 
-app.MapPut("/tables/{id}/status", async (int id, TableStatus status, RestaurantContext db) =>
-{
-    var table = await db.Tables.FindAsync(id);
-    if (table == null) return Results.NotFound();
+        // Ažuriraj OrderItems - jednostavna logika zamjene svih stavki
+        db.OrderItems.RemoveRange(order.OrderItems);
 
-    table.Status = status;
-    await db.SaveChangesAsync();
-    return Results.Ok(table);
-}).WithName("ChangeTableStatus").WithTags("Tables");
+        order.OrderItems = dto.OrderItems.Select(i => new OrderItem
+        {
+            MenuItemId = i.MenuItemId,
+            Quantity = i.Quantity
+        }).ToList();
+
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new
+        {
+            order.OrderId,
+            order.Name,
+            order.Status,
+            order.UserId,
+            order.TableId,
+            order.RestaurantId
+        });
+    })
+    .WithName("UpdateOrder")
+    .WithTags("Orders");
 
 app.MapGet("/menuitems", async (RestaurantContext db) =>
     await db.MenuItems
