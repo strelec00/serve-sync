@@ -114,11 +114,14 @@ app.MapDelete("/tables/{id:int}", async (int id, RestaurantContext db) =>
     .WithTags("Tables");
 
 app.MapPost("/users/register", async (User user, RestaurantContext db) =>
-{
-    db.Users.Add(user);
-    await db.SaveChangesAsync();
-    return Results.Created($"/users/{user.UserId}", user);
-}).WithName("RegisterUser").WithTags("Users");
+    {
+        user.RoleId = null; // Explicitly set RoleId to null
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        return Results.Created($"/users/{user.UserId}", user);
+    })
+    .WithName("RegisterUser")
+    .WithTags("Users");
 
 app.MapPost("/users/login", async (LoginRequest login, RestaurantContext db) =>
 {
@@ -248,6 +251,20 @@ app.MapPut("/orders/{id}", async (int id, OrderUpdateDto dto, RestaurantContext 
         });
     })
     .WithName("UpdateOrder")
+    .WithTags("Orders");
+
+app.MapPut("/orders/{id}/status", async (int id, OrderStatusUpdateDto dto, RestaurantContext db) =>
+    {
+        var order = await db.Orders.FindAsync(id);
+        if (order == null)
+            return Results.NotFound();
+
+        order.Status = dto.Status;
+        await db.SaveChangesAsync();
+
+        return Results.NoContent();
+    })
+    .WithName("UpdateOrderStatus")
     .WithTags("Orders");
 
 app.MapGet("/menuitems", async (RestaurantContext db) =>
