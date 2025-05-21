@@ -10,7 +10,7 @@ import {
   type OrderStatus,
   type MenuItem,
 } from "../types";
-import { MinusIcon, PlusIcon, XIcon } from "lucide-react";
+import { MinusIcon, PlusIcon, XIcon, PencilIcon } from "lucide-react";
 
 interface TablesProps {
   tables: Table[];
@@ -49,6 +49,7 @@ const Tables: React.FC<TablesProps> = ({
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [selectedItems, setSelectedItems] = useState<OrderItem[]>([]);
   const [orderName, setOrderName] = useState("");
@@ -97,6 +98,10 @@ const Tables: React.FC<TablesProps> = ({
     setOrderName("");
   };
 
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+  };
+
   const handleOpenOrderModal = (tableId: number) => {
     setSelectedTableId(tableId);
     // Initialize with all menu items at quantity 0
@@ -107,6 +112,36 @@ const Tables: React.FC<TablesProps> = ({
       }))
     );
     setIsOrderModalOpen(true);
+  };
+
+  const handleOpenEditModal = () => {
+    if (!selectedOrder) return;
+
+    // Initialize edit form with current order data
+    setOrderName(selectedOrder.name || "");
+    setSelectedTableId(selectedOrder.tableId);
+
+    // Initialize with all menu items at quantity 0
+    const initialItems = menuItems.map((item) => ({
+      menuItemId: item.menuItemId,
+      quantity: 0,
+    }));
+
+    // Update quantities for items in the order
+    if (selectedOrder.orderItems && selectedOrder.orderItems.length > 0) {
+      selectedOrder.orderItems.forEach((orderItem) => {
+        const index = initialItems.findIndex(
+          (item) => item.menuItemId === orderItem.menuItemId
+        );
+        if (index !== -1) {
+          initialItems[index].quantity = orderItem.quantity;
+        }
+      });
+    }
+
+    setSelectedItems(initialItems);
+    setIsEditModalOpen(true);
+    setIsModalOpen(false); // Close the view modal
   };
 
   const handleQuantityChange = (menuItemId: number, change: number) => {
@@ -166,6 +201,81 @@ const Tables: React.FC<TablesProps> = ({
       // Refresh the page or update the orders list
       // This would depend on how your app handles state updates
       window.location.reload();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUpdateOrder = async () => {
+    if (!selectedOrder || !selectedTableId) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Token not found");
+
+      const decoded = jwtDecode<JwtPayload>(token);
+      const userId = Number.parseInt(decoded.id, 10);
+
+      // Filter out items with quantity 0
+      const orderItems = selectedItems.filter((item) => item.quantity > 0);
+
+      if (orderItems.length === 0) {
+        alert("Please select at least one item");
+        return;
+      }
+
+      const orderData = {
+        name: orderName || `Table ${selectedTableId} Order`,
+        userId,
+        tableId: selectedTableId,
+        status: selectedOrder.status, // Keep the current status
+        orderItems: orderItems,
+      };
+
+      const res = await fetch(
+        `http://localhost:5123/orders/${selectedOrder.orderId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(orderData),
+        }
+      );
+
+      if (!res.ok) throw new Error("Error updating order");
+
+      // Get the updated order data from the response
+      const updatedOrder = await res.json();
+
+      // Close the edit modal
+      closeEditModal();
+
+      // Fetch the complete order details with items
+      try {
+        const detailsRes = await fetch(
+          `http://localhost:5123/orders/${selectedOrder.orderId}`
+        );
+        if (!detailsRes.ok)
+          throw new Error("Error fetching updated order details");
+
+        const orderDetails = await detailsRes.json();
+
+        // Update the selectedOrder state with the new data
+        setSelectedOrder(orderDetails);
+
+        // Reopen the view modal
+        setIsModalOpen(true);
+      } catch (err) {
+        console.error("Failed to fetch updated order details:", err);
+        // Even if fetching details fails, still show the basic updated order
+        setSelectedOrder({
+          ...selectedOrder,
+          ...updatedOrder,
+          orderItems: selectedItems.filter((item) => item.quantity > 0),
+        });
+        setIsModalOpen(true);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -320,7 +430,17 @@ const Tables: React.FC<TablesProps> = ({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden">
             <div className="p-5">
-              <h3 className="text-xl font-bold mb-4">Order Details</h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">Order Details</h3>
+                <button
+                  onClick={handleOpenEditModal}
+                  className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                >
+                  <PencilIcon className="h-4 w-4" />
+                  <span>Edit</span>
+                </button>
+              </div>
+
               <p className="text-sm text-gray-500 mb-4">
                 Table {selectedOrder.tableId} • Status:{" "}
                 {orderStatusLabels[Number.parseInt(selectedOrder.status)]}
@@ -328,43 +448,45 @@ const Tables: React.FC<TablesProps> = ({
 
               {selectedOrder.orderItems &&
               selectedOrder.orderItems.length > 0 ? (
-                <div className="max-h-60 overflow-y-auto">
-                  <div className="space-y-3">
-                    {selectedOrder.orderItems.map((item, index) => {
-                      const menuItem = menuItems.find(
-                        (m) => m.menuItemId === item.menuItemId
-                      );
-                      return (
-                        <div
-                          key={index}
-                          className="flex justify-between py-2 border-b border-gray-100"
-                        >
-                          <div>
-                            <p className="font-medium">
-                              {menuItem?.name || `Item #${item.menuItemId}`}
-                            </p>
-                            {menuItem && (
-                              <p className="text-sm text-gray-500">
-                                ${menuItem.price.toFixed(2)} each
+                <>
+                  <div className="max-h-60 overflow-y-auto mb-4 pr-5">
+                    <div className="space-y-3">
+                      {selectedOrder.orderItems.map((item, index) => {
+                        const menuItem = menuItems.find(
+                          (m) => m.menuItemId === item.menuItemId
+                        );
+                        return (
+                          <div
+                            key={index}
+                            className="flex justify-between py-2 border-b border-gray-100"
+                          >
+                            <div>
+                              <p className="font-medium">
+                                {menuItem?.name || `Item #${item.menuItemId}`}
                               </p>
-                            )}
-                          </div>
-                          <div className="flex items-center">
-                            <span className="px-2 py-1 bg-gray-100 rounded-md text-sm">
-                              {item.quantity}x
-                            </span>
-                            {menuItem && (
-                              <span className="ml-3 font-medium">
-                                ${(menuItem.price * item.quantity).toFixed(2)}
+                              {menuItem && (
+                                <p className="text-sm text-gray-500">
+                                  ${menuItem.price.toFixed(2)} each
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center">
+                              <span className="px-2 py-1 bg-gray-100 rounded-md text-sm">
+                                {item.quantity}x
                               </span>
-                            )}
+                              {menuItem && (
+                                <span className="ml-3 font-medium">
+                                  ${(menuItem.price * item.quantity).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-gray-200">
+                  <div className="pt-3 border-t border-gray-200">
                     <div className="flex justify-between font-bold text-lg">
                       <span>Total:</span>
                       <span>
@@ -383,7 +505,7 @@ const Tables: React.FC<TablesProps> = ({
                       </span>
                     </div>
                   </div>
-                </div>
+                </>
               ) : (
                 <div className="py-4 text-center text-gray-500">
                   Loading order items...
@@ -493,6 +615,102 @@ const Tables: React.FC<TablesProps> = ({
                 disabled={getTotalItems() === 0}
               >
                 Create Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Order Modal */}
+      {isEditModalOpen && selectedOrder && selectedTableId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden">
+            <div className="p-5">
+              <h3 className="text-xl font-bold mb-4">
+                Edit Order for Table {selectedTableId}
+              </h3>
+
+              <div className="mb-4">
+                <label
+                  htmlFor="editOrderName"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Order Name
+                </label>
+                <input
+                  type="text"
+                  id="editOrderName"
+                  value={orderName}
+                  onChange={(e) => setOrderName(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                />
+              </div>
+
+              <div className="max-h-60 overflow-y-auto">
+                <h4 className="font-medium mb-2">Menu Items</h4>
+                {menuItems.map((item) => {
+                  const orderItem = selectedItems.find(
+                    (i) => i.menuItemId === item.menuItemId
+                  );
+                  const quantity = orderItem ? orderItem.quantity : 0;
+
+                  return (
+                    <div
+                      key={item.menuItemId}
+                      className="flex items-center justify-between py-2 border-b border-gray-100 pr-5"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="text-sm text-gray-500">
+                          ${item.price.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() =>
+                            handleQuantityChange(item.menuItemId, -1)
+                          }
+                          className="p-1 rounded-full bg-gray-200 hover:bg-gray-300"
+                          disabled={quantity === 0}
+                        >
+                          <MinusIcon className="h-4 w-4" />
+                        </button>
+                        <span className="w-8 text-center">{quantity}</span>
+                        <button
+                          onClick={() =>
+                            handleQuantityChange(item.menuItemId, 1)
+                          }
+                          className="p-1 rounded-full bg-gray-200 hover:bg-gray-300"
+                        >
+                          <PlusIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex justify-between font-medium">
+                  <span>Total Items:</span>
+                  <span>{getTotalItems()}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 border-t bg-gray-50 flex space-x-3">
+              <button
+                onClick={closeEditModal}
+                className="flex-1 px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateOrder}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                disabled={getTotalItems() === 0}
+              >
+                Update Order
               </button>
             </div>
           </div>
