@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import type React from "react";
+import { useForm } from "react-hook-form";
 import { X } from "lucide-react";
 
 interface LoginFormProps {
@@ -8,35 +9,43 @@ interface LoginFormProps {
   onLoginSuccess: () => void;
 }
 
+type LoginFormInputs = {
+  username: string;
+  password: string;
+};
+
 const LoginForm: React.FC<LoginFormProps> = ({ onClose, onLoginSuccess }) => {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const {
+    register,
+    handleSubmit,
+    setError: setFormError,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginFormInputs>();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-
+  const onSubmit = async (data: LoginFormInputs) => {
     try {
       const response = await fetch("http://localhost:5123/users/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(data),
       });
 
       if (!response.ok) {
         throw new Error("Invalid credentials");
       }
 
-      const data = await response.json();
-      localStorage.setItem("token", data.token);
+      const responseData = await response.json();
+      localStorage.setItem("token", responseData.token);
       onLoginSuccess();
       onClose();
     } catch (err) {
       console.error(err);
-      setError("Login failed. Please check your credentials.");
+      setFormError("root", {
+        type: "manual",
+        message: "Login failed. Please check your credentials.",
+      });
     }
   };
 
@@ -52,7 +61,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose, onLoginSuccess }) => {
 
         <h2 className="text-2xl font-bold text-gray-800 mb-6">Login</h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <label
               htmlFor="username"
@@ -62,12 +71,14 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose, onLoginSuccess }) => {
             </label>
             <input
               id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-              required
+              {...register("username", { required: "Username is required" })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+            {errors.username && (
+              <p className="text-red-500 text-sm mt-1">
+                {errors.username.message}
+              </p>
+            )}
           </div>
 
           <div>
@@ -80,21 +91,27 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose, onLoginSuccess }) => {
             <input
               id="password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-              required
+              {...register("password", { required: "Password is required" })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+            {errors.password && (
+              <p className="text-red-500 text-sm mt-1">
+                {errors.password.message}
+              </p>
+            )}
           </div>
 
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+          {errors.root && (
+            <p className="text-red-500 text-sm">{errors.root.message}</p>
+          )}
 
           <div>
             <button
               type="submit"
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              disabled={isSubmitting}
+              className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
             >
-              Sign in
+              {isSubmitting ? "Signing in..." : "Sign in"}
             </button>
           </div>
         </form>
