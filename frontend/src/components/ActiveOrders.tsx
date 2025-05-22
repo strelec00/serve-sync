@@ -1,12 +1,14 @@
 "use client";
 
 import type React from "react";
-import type { Order } from "../types";
+import { useState, useEffect } from "react";
+import type { Order, OrderStatus } from "../types";
 import { CheckCircle, ChefHat, Utensils, AlertCircle } from "lucide-react";
 
 interface ActiveOrdersProps {
   orders: Order[];
   updateOrderStatus: (orderId: number, newStatus: number) => void;
+  onOrderStatusChanged?: () => void;
 }
 
 const orderStatusLabels: Record<number, string> = {
@@ -17,9 +19,47 @@ const orderStatusLabels: Record<number, string> = {
 };
 
 const ActiveOrders: React.FC<ActiveOrdersProps> = ({
-  orders,
+  orders: initialOrders,
   updateOrderStatus,
+  onOrderStatusChanged,
 }) => {
+  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [isUpdating, setIsUpdating] = useState<Record<number, boolean>>({});
+
+  // Listen for order updates from Tables component
+  useEffect(() => {
+    const handleOrdersUpdated = (event: CustomEvent<Order[]>) => {
+      if (event.detail) {
+        console.log("Orders updated event received:", event.detail.length);
+        setOrders(event.detail);
+
+        // Notify parent component that order status has changed
+        if (onOrderStatusChanged) {
+          onOrderStatusChanged();
+        }
+      }
+    };
+
+    // Add event listener
+    window.addEventListener(
+      "ordersUpdated",
+      handleOrdersUpdated as EventListener
+    );
+
+    // Clean up
+    return () => {
+      window.removeEventListener(
+        "ordersUpdated",
+        handleOrdersUpdated as EventListener
+      );
+    };
+  }, [onOrderStatusChanged]);
+
+  // Update orders when initialOrders prop changes
+  useEffect(() => {
+    setOrders(initialOrders);
+  }, [initialOrders]);
+
   const getStatusColor = (statusId: number) => {
     switch (statusId) {
       case 0: // Ordered
@@ -57,7 +97,7 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
       case 1: // Preparing
         return "In Kitchen";
       case 2: // ReadyToServe
-        return "Ready to Serve";
+        return "Waiting for Waiter...";
       case 3: // Served
         return "Served to Table";
       default:
@@ -84,10 +124,11 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
       case 2: // ReadyToServe
         return {
           show: false,
-          text: "",
-          nextStatus: null,
-          className: "",
+          text: "Waiting for Waiter",
+          nextStatus: null, // Served
+          className: "bg-blue-600 hover:bg-blue-700 focus:ring-blue-500",
         };
+
       default:
         return {
           show: false,
@@ -95,6 +136,65 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
           nextStatus: null,
           className: "",
         };
+    }
+  };
+
+  // Function to update order status in the database
+  const handleStatusUpdate = async (orderId: number, newStatus: number) => {
+    // Set updating state for this order
+    setIsUpdating((prev) => ({ ...prev, [orderId]: true }));
+
+    try {
+      // First update the UI optimistically
+      updateOrderStatus(orderId, newStatus);
+
+      // Update local state - Fix: Cast the number to OrderStatus
+      const updatedOrders = orders.map((order) =>
+        order.orderId === orderId
+          ? { ...order, status: newStatus as unknown as OrderStatus }
+          : order
+      );
+
+      setOrders(updatedOrders);
+
+      // Dispatch a custom event to notify other components about the updated orders
+      const event = new CustomEvent("ordersUpdated", { detail: updatedOrders });
+      window.dispatchEvent(event);
+
+      // Then update the database
+      const response = await fetch(
+        `http://localhost:5123/orders/${orderId}/status`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
+        }
+      );
+
+      if (!response.ok) {
+        console.error("Failed to update order status in database");
+        // If the API call fails, revert the UI update
+        setOrders((prevOrders) =>
+          prevOrders.map((order) =>
+            order.orderId === orderId
+              ? { ...order, status: order.status }
+              : order
+          )
+        );
+      } else {
+        // Notify parent component that order status has changed
+        if (onOrderStatusChanged) {
+          onOrderStatusChanged();
+        }
+      }
+    } catch (error) {
+      console.error("Error updating order status:", error);
+    } finally {
+      // Clear updating state
+      setIsUpdating((prev) => ({ ...prev, [orderId]: false }));
     }
   };
 
@@ -106,7 +206,7 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
   });
 
   return (
-    <div className="bg-gray-50 p-6 rounded-lg">
+    <div className=" p-6 rounded-lg shadow-md p-6">
       <h2 className="text-xl font-bold text-gray-900 mb-6">Active Orders</h2>
 
       {sortedOrders.length === 0 ? (
@@ -119,6 +219,7 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
             const statusId = Number.parseInt(order.status.toString());
             const buttonConfig = getButtonConfig(statusId);
             const statusColorClass = getStatusColor(statusId);
+            const itemCount = order.orderItems?.length || 0;
 
             return (
               <div
@@ -127,9 +228,9 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
                   statusColorClass.includes("border")
                     ? statusColorClass.split(" ")[2]
                     : "border-gray-200"
-                } transition-all duration-200 hover:shadow-lg`}
+                } transition-all duration-200 hover:shadow-lg flex flex-col h-full`}
               >
-                <div className="px-6 py-5">
+                <div className="px-6 py-5 flex-grow">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-2">
                       <span className="text-lg font-bold text-gray-900">
@@ -152,48 +253,72 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
                   </div>
 
                   <div className="mb-5">
-                    <h3 className="text-sm font-medium text-gray-500 mb-3">
-                      Order Items:
-                    </h3>
-                    <ul className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                      {order.orderItems?.map((item, index) => (
-                        <li
-                          key={item.orderItemId || index}
-                          className="flex justify-between items-center py-1.5 px-3 bg-gray-50 rounded-md"
-                        >
-                          <span className="font-medium">
-                            {item.menuItem?.name || `Item #${item.menuItemId}`}
-                          </span>
-                          <span className="px-2 py-0.5 bg-gray-200 rounded-md text-sm font-medium">
-                            {item.quantity}x
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                    <div className="flex items-center">
-                      {getStatusIcon(statusId)}
-                      <span className="ml-2 text-sm font-medium text-gray-700">
-                        {getStatusText(statusId)}
-                      </span>
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-sm font-medium text-gray-500">
+                        Order Items:
+                      </h3>
+                      {itemCount > 4 && (
+                        <span className="text-xs text-gray-400">
+                          Scroll to see all {itemCount} items
+                        </span>
+                      )}
                     </div>
 
-                    {buttonConfig.show && (
-                      <button
-                        onClick={() =>
-                          updateOrderStatus(
-                            order.orderId,
-                            buttonConfig.nextStatus!
-                          )
-                        }
-                        className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${buttonConfig.className} focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200`}
-                      >
-                        {buttonConfig.text}
-                      </button>
-                    )}
+                    {/* Fixed height container with scrolling for more than 4 items */}
+                    <div
+                      className={`${
+                        itemCount > 4 ? "h-[168px]" : ""
+                      } overflow-y-auto pr-2 custom-scrollbar`}
+                    >
+                      <ul className="space-y-2">
+                        {order.orderItems?.map((item, index) => (
+                          <li
+                            key={item.orderItemId || index}
+                            className="flex justify-between items-center py-1.5 px-3 bg-gray-50 rounded-md"
+                          >
+                            <span className="font-medium">
+                              {item.menuItem?.name ||
+                                `Item #${item.menuItemId}`}
+                            </span>
+                            <span className="px-2 py-0.5 bg-gray-200 rounded-md text-sm font-medium">
+                              {item.quantity}x
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
+                </div>
+
+                {/* Static footer with status and action button */}
+                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 mt-auto flex items-center justify-between">
+                  <div className="flex items-center">
+                    {getStatusIcon(statusId)}
+                    <span className="ml-2 text-sm font-medium text-gray-700">
+                      {getStatusText(statusId)}
+                    </span>
+                  </div>
+
+                  {buttonConfig.show && (
+                    <button
+                      onClick={() =>
+                        handleStatusUpdate(
+                          order.orderId,
+                          buttonConfig.nextStatus!
+                        )
+                      }
+                      disabled={isUpdating[order.orderId]}
+                      className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
+                        buttonConfig.className
+                      } focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200 ${
+                        isUpdating[order.orderId] ? "opacity-75" : ""
+                      }`}
+                    >
+                      {isUpdating[order.orderId]
+                        ? "Updating..."
+                        : buttonConfig.text}
+                    </button>
+                  )}
                 </div>
               </div>
             );

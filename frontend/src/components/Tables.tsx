@@ -10,7 +10,16 @@ import {
   type OrderStatus,
   type MenuItem,
 } from "../types";
-import { MinusIcon, PlusIcon, XIcon, PencilIcon } from "lucide-react";
+import {
+  MinusIcon,
+  PlusIcon,
+  XIcon,
+  PencilIcon,
+  CheckCircle,
+  AlertCircle,
+  ChefHat,
+  Utensils,
+} from "lucide-react";
 
 interface TablesProps {
   tables: Table[];
@@ -19,6 +28,7 @@ interface TablesProps {
   addTable: (t: Table) => void;
   deleteTable: (id: number) => void;
   updateTableStatus: (tableId: number, newStatus: Table["status"]) => void;
+  onOrdersChanged?: () => void;
 }
 
 interface JwtPayload {
@@ -44,6 +54,7 @@ const Tables: React.FC<TablesProps> = ({
   addTable,
   deleteTable,
   updateTableStatus,
+  onOrdersChanged,
 }) => {
   const buttonRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -53,6 +64,7 @@ const Tables: React.FC<TablesProps> = ({
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [selectedItems, setSelectedItems] = useState<OrderItem[]>([]);
   const [orderName, setOrderName] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const getTableOrder = (tableId: number) =>
     orders.find((o) => o.tableId === tableId);
@@ -117,6 +129,13 @@ const Tables: React.FC<TablesProps> = ({
   const handleOpenEditModal = () => {
     if (!selectedOrder) return;
 
+    // Check if order is in "Preparing" or later status - prevent editing
+    const orderStatus = Number.parseInt(selectedOrder.status.toString());
+    if (orderStatus >= 1) {
+      alert("Orders in preparation or ready to serve cannot be edited.");
+      return;
+    }
+
     // Initialize edit form with current order data
     setOrderName(selectedOrder.name || "");
     setSelectedTableId(selectedOrder.tableId);
@@ -158,6 +177,7 @@ const Tables: React.FC<TablesProps> = ({
 
   const handleCreateOrder = async () => {
     if (!selectedTableId) return;
+    setIsProcessing(true);
 
     try {
       const token = localStorage.getItem("token");
@@ -171,6 +191,7 @@ const Tables: React.FC<TablesProps> = ({
 
       if (orderItems.length === 0) {
         alert("Please select at least one item");
+        setIsProcessing(false);
         return;
       }
 
@@ -192,22 +213,32 @@ const Tables: React.FC<TablesProps> = ({
 
       if (!res.ok) throw new Error("Error creating order");
 
+      // Get the created order from the response
+      const createdOrder = await res.json();
+
       // Update table status to occupied
       updateTableStatus(selectedTableId, TableStatus.Occupied);
 
       // Close the modal
       closeOrderModal();
 
-      // Refresh the page or update the orders list
-      // This would depend on how your app handles state updates
-      window.location.reload();
+      // Refresh orders from the server
+      await refreshOrders();
+
+      // Notify parent component if callback exists
+      if (onOrdersChanged) {
+        onOrdersChanged();
+      }
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleUpdateOrder = async () => {
     if (!selectedOrder || !selectedTableId) return;
+    setIsProcessing(true);
 
     try {
       const token = localStorage.getItem("token");
@@ -221,6 +252,7 @@ const Tables: React.FC<TablesProps> = ({
 
       if (orderItems.length === 0) {
         alert("Please select at least one item");
+        setIsProcessing(false);
         return;
       }
 
@@ -266,6 +298,14 @@ const Tables: React.FC<TablesProps> = ({
 
         // Reopen the view modal
         setIsModalOpen(true);
+
+        // Refresh orders from the server
+        await refreshOrders();
+
+        // Notify parent component if callback exists
+        if (onOrdersChanged) {
+          onOrdersChanged();
+        }
       } catch (err) {
         console.error("Failed to fetch updated order details:", err);
         // Even if fetching details fails, still show the basic updated order
@@ -278,13 +318,15 @@ const Tables: React.FC<TablesProps> = ({
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleAddTable = async () => {
     try {
       const token = localStorage.getItem("token");
-      if (!token) throw new Error("Token nije pronađen");
+      if (!token) throw new Error("Token not found");
 
       const decoded = jwtDecode<JwtPayload>(token);
       const userId = Number.parseInt(decoded.id, 10);
@@ -323,7 +365,7 @@ const Tables: React.FC<TablesProps> = ({
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) throw new Error("Greška pri dodavanju stola");
+      if (!res.ok) throw new Error("Error adding table");
 
       const created: Table = await res.json();
       addTable(created);
@@ -333,18 +375,84 @@ const Tables: React.FC<TablesProps> = ({
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Obrisati stol?")) return;
+    if (!confirm("Delete this table?")) return;
 
     try {
       const res = await fetch(`http://localhost:5123/tables/${id}`, {
         method: "DELETE",
       });
 
-      if (!res.ok) throw new Error("Greška pri brisanju stola");
+      if (!res.ok) throw new Error("Error deleting table");
 
       deleteTable(id);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleFinishOrder = async (orderId: number, tableId: number) => {
+    if (!confirm("Mark this order as finished? This will delete the order."))
+      return;
+    setIsProcessing(true);
+
+    try {
+      const res = await fetch(`http://localhost:5123/orders/${orderId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+
+      if (!res.ok) throw new Error("Error finishing order");
+
+      // Update table status to free
+      updateTableStatus(tableId, TableStatus.Free);
+
+      // Update local state by filtering out the deleted order
+      const updatedOrders = orders.filter((order) => order.orderId !== orderId);
+
+      // Dispatch a custom event to notify other components about the updated orders
+      const event = new CustomEvent("ordersUpdated", { detail: updatedOrders });
+      window.dispatchEvent(event);
+
+      // Refresh orders from the server (as a backup)
+      await refreshOrders();
+    } catch (err) {
+      console.error("Error finishing order:", err);
+    } finally {
+      if (onOrdersChanged) {
+        onOrdersChanged();
+      }
+      setIsProcessing(false);
+    }
+  };
+
+  // Function to refresh orders from the server
+  const refreshOrders = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const headers: Record<string, string> = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+
+      const ordersRes = await fetch("http://localhost:5123/orders", {
+        headers,
+      });
+      if (!ordersRes.ok) throw new Error("Error fetching orders");
+
+      const ordersData = await ordersRes.json();
+
+      // Dispatch a custom event to notify other components about the updated orders
+      const event = new CustomEvent("ordersUpdated", { detail: ordersData });
+      window.dispatchEvent(event);
+
+      // Notify parent component if callback exists
+      if (onOrdersChanged) {
+        onOrdersChanged();
+      }
+    } catch (error) {
+      console.error("Error refreshing orders:", error);
     }
   };
 
@@ -372,51 +480,122 @@ const Tables: React.FC<TablesProps> = ({
           const order = getTableOrder(table.tableId);
           const occupied = table.status === "Occupied" || !!order;
           const isLastTable = table.tableId === highestTableId;
+          const orderStatus = order
+            ? Number.parseInt(order.status.toString())
+            : -1;
+
+          // Determine border and background colors based on status
+          let borderColor = "border-gray-200";
+          let bgGradient = "";
+          let statusIcon = null;
+
+          if (occupied) {
+            if (orderStatus === 0) {
+              // Ordered - Orange
+              borderColor = "border-orange-300";
+              bgGradient = "bg-gradient-to-b from-orange-50 to-white";
+              statusIcon = <AlertCircle className="h-4 w-4 text-orange-500" />;
+            } else if (orderStatus === 1) {
+              // Preparing - Yellow
+              borderColor = "border-yellow-300";
+              bgGradient = "bg-gradient-to-b from-yellow-50 to-white";
+              statusIcon = <ChefHat className="h-4 w-4 text-yellow-500" />;
+            } else if (orderStatus === 2) {
+              // Ready to Serve - Green
+              borderColor = "border-green-300";
+              bgGradient = "bg-gradient-to-b from-green-50 to-white";
+              statusIcon = <Utensils className="h-4 w-4 text-green-500" />;
+            } else {
+              // Served - Blue
+              borderColor = "border-blue-300";
+              bgGradient = "bg-gradient-to-b from-blue-50 to-white";
+              statusIcon = <CheckCircle className="h-4 w-4 text-blue-500" />;
+            }
+          }
 
           return (
             <div
               key={table.tableId}
-              className="relative bg-white shadow rounded-lg border border-gray-200"
+              className={`relative overflow-hidden shadow-md hover:shadow-lg rounded-lg border-2 transition-all duration-200 ${borderColor} ${bgGradient}`}
             >
               {/* Only show delete button for the last table */}
               {isLastTable && (
                 <button
                   onClick={() => handleDelete(table.tableId)}
-                  className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white p-1 rounded-full"
+                  className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white p-1 rounded-full z-10 shadow-sm"
                 >
                   <XIcon className="h-3 w-3" />
                 </button>
               )}
 
               <div className="p-4 flex flex-col items-center">
-                <span className="text-xl font-bold mb-2">
-                  Table {table.tableId}
-                </span>
+                <div className="flex items-center justify-center mb-3 w-full">
+                  <span className="text-xl font-bold text-gray-800">
+                    Table {table.tableId}
+                  </span>
+                  {statusIcon && <span className="ml-2">{statusIcon}</span>}
+                </div>
 
                 <div className="w-full text-center">
                   {occupied ? (
-                    <button
-                      ref={(el: HTMLButtonElement | null) => {
-                        buttonRefs.current[table.tableId] = el;
-                      }}
-                      onClick={() => handleViewOrder(table.tableId)}
-                      className="w-full px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                    >
-                      View Order
-                    </button>
+                    orderStatus === 2 ? (
+                      // Order Ready to Serve - Show "Order Finished" button
+                      <button
+                        onClick={() =>
+                          handleFinishOrder(order!.orderId, table.tableId)
+                        }
+                        disabled={isProcessing}
+                        className="w-full px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 flex items-center justify-center transition-colors duration-200"
+                      >
+                        {isProcessing ? "Processing..." : "Order Finished"}
+                        {!isProcessing && (
+                          <CheckCircle className="ml-1 h-4 w-4" />
+                        )}
+                      </button>
+                    ) : (
+                      // Order in other status - Show "View Order" button
+                      <button
+                        ref={(el: HTMLButtonElement | null) => {
+                          buttonRefs.current[table.tableId] = el;
+                        }}
+                        onClick={() => handleViewOrder(table.tableId)}
+                        className={`w-full px-4 py-2 text-white rounded-md transition-colors duration-200 ${
+                          orderStatus === 0
+                            ? "bg-orange-500 hover:bg-orange-600"
+                            : orderStatus === 1
+                            ? "bg-yellow-500 hover:bg-yellow-600"
+                            : "bg-blue-600 hover:bg-blue-700"
+                        }`}
+                      >
+                        View Order
+                      </button>
+                    )
                   ) : (
                     <button
                       onClick={() => handleOpenOrderModal(table.tableId)}
-                      className="w-full px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700"
+                      className="w-full px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors duration-200"
                     >
                       Order
                     </button>
                   )}
-                  {/* Order status samo ako postoji order */}
+
+                  {/* Order status badge */}
                   {order && (
-                    <span className="text-sm text-red-400">
-                      Status: {orderStatusLabels[Number.parseInt(order.status)]}
-                    </span>
+                    <div className="mt-2">
+                      <span
+                        className={`text-sm px-2 py-1 rounded-full inline-flex items-center ${
+                          orderStatus === 0
+                            ? "bg-orange-100 text-orange-800"
+                            : orderStatus === 1
+                            ? "bg-yellow-100 text-yellow-800"
+                            : orderStatus === 2
+                            ? "bg-green-100 text-green-800"
+                            : "bg-blue-100 text-blue-800"
+                        }`}
+                      >
+                        {orderStatusLabels[orderStatus]}
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
@@ -432,13 +611,15 @@ const Tables: React.FC<TablesProps> = ({
             <div className="p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">Order Details</h3>
-                <button
-                  onClick={handleOpenEditModal}
-                  className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
-                >
-                  <PencilIcon className="h-4 w-4" />
-                  <span>Edit</span>
-                </button>
+                {Number.parseInt(selectedOrder.status.toString()) === 0 && (
+                  <button
+                    onClick={handleOpenEditModal}
+                    className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                    <span>Edit</span>
+                  </button>
+                )}
               </div>
 
               <p className="text-sm text-gray-500 mb-4">
@@ -612,9 +793,9 @@ const Tables: React.FC<TablesProps> = ({
               <button
                 onClick={handleCreateOrder}
                 className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                disabled={getTotalItems() === 0}
+                disabled={getTotalItems() === 0 || isProcessing}
               >
-                Create Order
+                {isProcessing ? "Creating..." : "Create Order"}
               </button>
             </div>
           </div>
@@ -708,9 +889,9 @@ const Tables: React.FC<TablesProps> = ({
               <button
                 onClick={handleUpdateOrder}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                disabled={getTotalItems() === 0}
+                disabled={getTotalItems() === 0 || isProcessing}
               >
-                Update Order
+                {isProcessing ? "Updating..." : "Update Order"}
               </button>
             </div>
           </div>
