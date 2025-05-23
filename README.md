@@ -65,47 +65,49 @@ Admins and waiters can create and delete tables.
 ## Setup Instructions
 
 ### 1. Clone the repository
-    ```
-    git clone https://github.com/strelec00/serve-sync
-    cd serve-sync
-
+```bash
+git clone https://github.com/strelec00/serve-sync
+cd serve-sync
+```
 ### Backend Setup
 2. Navigate to backend
-      ```
-      cd backend/
+```bash
+cd backend/
+```
 3. Configure DB Connection
    In appsetting.json, replace your_username and your_password with valid SQL Server credentials. Set Port if needed.
-      ```
-    {
-    "ConnectionStrings": {
-    "DefaultConnection":"Host=localhost;Port=$5432;Database=ServeSync;Username=your_username;Password=your_password"
-      }
-    }
-4. Install Entity Framework Tools (If not already installed)
-      ```
-    dotnet tool install --global dotnet-ef
-
-5. Apply Migrations and Seed the Database
-      ```
-    dotnet ef database update
-      
-6. Run the Backend
+```csharp
+{
+"ConnectionStrings": {    "DefaultConnection":"Host=localhost;Port=$5432;Database=ServeSync;Username=your_username;Password=your_password"
+  }
+}
+```
+5. Install Entity Framework Tools (If not already installed)
+ ```bash
+dotnet tool install --global dotnet-ef
+ ```
+6. Apply Migrations and Seed the Database
+ ```bash
+dotnet ef database update
+ ```
+7. Run the Backend
    Backend should run on Port: 5123
-      ```
-    dotnet run
-
+ ```bash
+dotnet run
+ ```
 ### Frontend Setup
 7. Navigate to Frontend
-      ```
-    cd ../frontend
+ ```bash
+cd ../frontend
+```
 8. Install Dependencies
-      ```
-    npm install
-
+```bash
+npm install
+```
 9. Run the Frontend
-      ```
-    npm run dev
-
+```bash
+npm run dev
+```
 ## Default Login Credentials
 | Role   | Username   | Password   |
 |--------|------------|------------|
