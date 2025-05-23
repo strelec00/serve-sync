@@ -206,7 +206,7 @@ const ActiveOrders: React.FC<ActiveOrdersProps> = ({
   });
 
   return (
-    <div className=" p-6 rounded-lg shadow-md p-6">
+    <div className=" rounded-lg shadow-md p-6">
       <h2 className="text-xl font-bold text-gray-900 mb-6">Active Orders</h2>
 
       {sortedOrders.length === 0 ? (

@@ -61,15 +61,13 @@ const Menu: React.FC<MenuProps> = ({
     if (!editingItemId) return;
 
     try {
-      const token = localStorage.getItem("token");
-
       const response = await fetch(
         `http://localhost:5123/menuitems/${editingItemId}`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
           body: JSON.stringify(formData),
         }
@@ -92,13 +90,11 @@ const Menu: React.FC<MenuProps> = ({
 
   const handleAddItem = async () => {
     try {
-      const token = localStorage.getItem("token");
-
       const response = await fetch("http://localhost:5123/menuitems", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
         body: JSON.stringify(newItemData),
       });
@@ -139,14 +135,12 @@ const Menu: React.FC<MenuProps> = ({
     }
 
     try {
-      const token = localStorage.getItem("token");
-
       const response = await fetch(
         `http://localhost:5123/menuitems/${itemId}`,
         {
           method: "DELETE",
           headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
         }
       );

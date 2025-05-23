@@ -207,14 +207,12 @@ const Tables: React.FC<TablesProps> = ({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
         body: JSON.stringify(orderData),
       });
 
       if (!res.ok) throw new Error("Error creating order");
-
-      // Get the created order from the response
-      const createdOrder = await res.json();
 
       // Update table status to occupied
       updateTableStatus(selectedTableId, TableStatus.Occupied);
@@ -270,6 +268,7 @@ const Tables: React.FC<TablesProps> = ({
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
           body: JSON.stringify(orderData),
         }
@@ -361,6 +360,7 @@ const Tables: React.FC<TablesProps> = ({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
         body: JSON.stringify(body),
       });
@@ -380,6 +380,10 @@ const Tables: React.FC<TablesProps> = ({
     try {
       const res = await fetch(`http://localhost:5123/tables/${id}`, {
         method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
       });
 
       if (!res.ok) throw new Error("Error deleting table");
@@ -469,7 +473,7 @@ const Tables: React.FC<TablesProps> = ({
         <h2 className="text-lg font-bold text-gray-900">Tables</h2>
         <button
           onClick={handleAddTable}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-1 px-3 rounded-lg shadow"
+          className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg transition-colors shadow-sm"
         >
           + Add Table
         </button>
@@ -547,7 +551,7 @@ const Tables: React.FC<TablesProps> = ({
                         disabled={isProcessing}
                         className="w-full px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 flex items-center justify-center transition-colors duration-200"
                       >
-                        {isProcessing ? "Processing..." : "Order Finished"}
+                        {isProcessing ? "Processing..." : "Order Served"}
                         {!isProcessing && (
                           <CheckCircle className="ml-1 h-4 w-4" />
                         )}

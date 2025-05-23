@@ -1,6 +1,6 @@
 "use client";
 
-import type React from "react";
+import React from "react";
 import { useForm } from "react-hook-form";
 
 type RegisterFormInputs = {
@@ -12,6 +12,7 @@ const RegisterForm: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormInputs>();
 
@@ -22,8 +23,8 @@ const RegisterForm: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...data,
-          restaurantId: 1, // Explicitly set restaurantId to 1
-          roleId: null, // Explicitly set roleId to null
+          restaurantId: 1,
+          roleId: null,
         }),
       });
 
@@ -32,7 +33,10 @@ const RegisterForm: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         onClose();
       } else {
         const errorData = await response.json().catch(() => null);
-        alert(`Registration error: ${errorData?.message || "Unknown error"}`);
+        setError("username", {
+          type: "server",
+          message: errorData?.message || "Unknown registration error",
+        });
       }
     } catch (error) {
       console.error("Error:", error);

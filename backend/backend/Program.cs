@@ -9,11 +9,11 @@ using backend.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Dodaj EF Core za PostgreSQL
+// EF Core + PostgreSQL
 builder.Services.AddDbContext<RestaurantContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Dodaj JWT autentifikaciju
+// JWT autentifikacija
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -29,13 +29,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// Podrška za enum kao string u JSON-u
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
-// CORS policy za React frontend
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -46,7 +44,6 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -60,68 +57,66 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-// AKTIVIRAJ CORS POLICY OVDJE
 app.UseCors("AllowFrontend");
-
 app.UseAuthentication();
 app.UseAuthorization();
 
 // ---------------- ENDPOINTI ---------------- //
 
-app.MapGet("/tables", async (RestaurantContext db) =>
-    {
-        var tables = await db.Tables
-            .Select(t => new {
-                t.TableId,
-                t.Capacity,
-                t.Status,
-                t.UserId,
-                UserName = t.User != null ? t.User.Username : null,  // ako postoji korisnik
-                t.RestaurantId,
-                RestaurantName = t.Restaurant.Name,                  // ako postoji restoran
-                Orders = t.Orders.Select(o => new {
-                    o.OrderId,
-                    o.Status,
-                    o.Name
-                }).ToList()
-            })
-            .ToListAsync();
+// Stolovi
+app.MapGet("/tables", async (RestaurantContext db) => {
+    var tables = await db.Tables
+        .Select(t => new {
+            t.TableId,
+            t.Capacity,
+            t.Status,
+            t.UserId,
+            UserName = t.User != null ? t.User.Username : null,
+            t.RestaurantId,
+            RestaurantName = t.Restaurant.Name,
+            Orders = t.Orders.Select(o => new {
+                o.OrderId,
+                o.Status,
+                o.Name
+            }).ToList()
+        })
+        .ToListAsync();
 
-        return Results.Ok(tables);
-    })
-    .WithName("GetTables")
-    .WithTags("Tables");
+    return Results.Ok(tables);
+}).RequireAuthorization().WithName("GetTables").WithTags("Tables");
 
 app.MapPost("/tables", async (Table table, RestaurantContext db) =>
 {
     db.Tables.Add(table);
     await db.SaveChangesAsync();
     return Results.Created($"/tables/{table.TableId}", table);
-}).WithName("AddTable").WithTags("Tables");
+}).RequireAuthorization().WithName("AddTable").WithTags("Tables");
 
 app.MapDelete("/tables/{id:int}", async (int id, RestaurantContext db) =>
-    {
-        var table = await db.Tables.FindAsync(id);
-        if (table is null) return Results.NotFound();
+{
+    var table = await db.Tables.FindAsync(id);
+    if (table is null) return Results.NotFound();
 
-        db.Tables.Remove(table);
-        await db.SaveChangesAsync();
+    db.Tables.Remove(table);
+    await db.SaveChangesAsync();
 
-        return Results.NoContent();
-    })
-    .WithName("DeleteTable")
-    .WithTags("Tables");
+    return Results.NoContent();
+}).RequireAuthorization().WithName("DeleteTable").WithTags("Tables");
 
 app.MapPost("/users/register", async (User user, RestaurantContext db) =>
+{
+    var existingUser = await db.Users.FirstOrDefaultAsync(u => u.Username == user.Username);
+    if (existingUser != null)
     {
-        user.RoleId = null; // Explicitly set RoleId to null
-        db.Users.Add(user);
-        await db.SaveChangesAsync();
-        return Results.Created($"/users/{user.UserId}", user);
-    })
-    .WithName("RegisterUser")
-    .WithTags("Users");
+        return Results.BadRequest(new { message = $"Username '{user.Username}' is already taken." });
+    }
+
+    user.RoleId = null;
+    db.Users.Add(user);
+    await db.SaveChangesAsync();
+    return Results.Created($"/users/{user.UserId}", user);
+}).WithName("RegisterUser").WithTags("Users");
+
 
 app.MapPost("/users/login", async (LoginRequest login, RestaurantContext db) =>
 {
@@ -150,10 +145,61 @@ app.MapPost("/users/login", async (LoginRequest login, RestaurantContext db) =>
     var jwt = tokenHandler.WriteToken(token);
 
     return Results.Ok(new { token = jwt });
-})
-.WithName("LoginUser")
-.WithTags("Users");
+}).WithName("LoginUser").WithTags("Users");
 
+// Osigurani korisnički endpointi
+app.MapGet("/users", async (RestaurantContext db) =>
+{
+    var users = await db.Users
+        .Select(u => new {
+            u.UserId,
+            u.Username,
+            Role = u.Role != null ? new {
+                u.Role.RoleId,
+                u.Role.Name
+            } : null
+        })
+        .ToListAsync();
+
+    return Results.Ok(users);
+}).RequireAuthorization().WithName("GetUsers").WithTags("Users");
+
+app.MapPut("/users/{id}/role", async (int id, int roleId, RestaurantContext db) =>
+{
+    var user = await db.Users.FindAsync(id);
+    if (user == null)
+        return Results.NotFound("User not found");
+
+    var role = await db.Roles.FindAsync(roleId);
+    if (role == null)
+        return Results.BadRequest("Invalid role ID");
+
+    user.RoleId = roleId;
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new {
+        user.UserId,
+        user.Username,
+        Role = new {
+            role.RoleId,
+            role.Name
+        }
+    });
+}).RequireAuthorization().WithName("UpdateUserRole").WithTags("Users");
+
+app.MapDelete("/users/{id}", async (int id, RestaurantContext db) =>
+{
+    var user = await db.Users.FindAsync(id);
+    if (user == null)
+        return Results.NotFound("User not found");
+
+    db.Users.Remove(user);
+    await db.SaveChangesAsync();
+
+    return Results.Ok($"User with ID {id} deleted successfully.");
+}).RequireAuthorization().WithName("DeleteUser").WithTags("Users");
+
+// Narudžbe
 app.MapGet("/orders", async (RestaurantContext db) =>
 {
     var orders = await db.Orders
@@ -162,9 +208,9 @@ app.MapGet("/orders", async (RestaurantContext db) =>
             o.Name,
             o.Status,
             o.TableId, 
-            TableNumber = o.Table.Capacity,       // ako postoji
+            TableNumber = o.Table.Capacity,
             o.UserId,
-            UserName = o.User.Username,         // ako postoji
+            UserName = o.User.Username,
             OrderItems = o.OrderItems.Select(oi => new {
                 oi.OrderItemId,
                 oi.MenuItemId,
@@ -179,94 +225,98 @@ app.MapGet("/orders", async (RestaurantContext db) =>
         .ToListAsync();
 
     return Results.Ok(orders);
-});
-
+}).RequireAuthorization().WithTags("Orders");
 
 app.MapPost("/orders", async (OrderCreateDto dto, RestaurantContext db) =>
+{
+    var order = new Order
     {
-        var order = new Order
-        {
-            Name = dto.Name,
-            UserId = dto.UserId,
-            TableId = dto.TableId,
-            RestaurantId = dto.RestaurantId,
-            Status = OrderStatus.Ordered,
-            OrderItems = dto.OrderItems.Select(i => new OrderItem
-            {
-                MenuItemId = i.MenuItemId,
-                Quantity = i.Quantity
-            }).ToList()
-        };
-
-        db.Orders.Add(order);
-        await db.SaveChangesAsync();
-
-        return Results.Created($"/orders/{order.OrderId}", new
-        {
-            order.OrderId,
-            order.Name,
-            order.Status,
-            order.UserId,
-            order.TableId,
-            order.RestaurantId
-        });
-    })
-    .WithName("CreateOrder")
-    .WithTags("Orders");
-
-app.MapPut("/orders/{id}", async (int id, OrderUpdateDto dto, RestaurantContext db) =>
-    {
-        var order = await db.Orders
-            .Include(o => o.OrderItems)
-            .FirstOrDefaultAsync(o => o.OrderId == id);
-
-        if (order == null)
-            return Results.NotFound();
-
-        // Ažuriraj osnovna polja
-        order.Name = dto.Name;
-        order.UserId = dto.UserId;
-        order.TableId = dto.TableId;
-        order.Status = dto.Status;
-
-        // Ažuriraj OrderItems - jednostavna logika zamjene svih stavki
-        db.OrderItems.RemoveRange(order.OrderItems);
-
-        order.OrderItems = dto.OrderItems.Select(i => new OrderItem
+        Name = dto.Name,
+        UserId = dto.UserId,
+        TableId = dto.TableId,
+        RestaurantId = dto.RestaurantId,
+        Status = OrderStatus.Ordered,
+        OrderItems = dto.OrderItems.Select(i => new OrderItem
         {
             MenuItemId = i.MenuItemId,
             Quantity = i.Quantity
-        }).ToList();
+        }).ToList()
+    };
 
-        await db.SaveChangesAsync();
+    db.Orders.Add(order);
+    await db.SaveChangesAsync();
 
-        return Results.Ok(new
-        {
-            order.OrderId,
-            order.Name,
-            order.Status,
-            order.UserId,
-            order.TableId,
-            order.RestaurantId
-        });
-    })
-    .WithName("UpdateOrder")
-    .WithTags("Orders");
+    return Results.Created($"/orders/{order.OrderId}", new
+    {
+        order.OrderId,
+        order.Name,
+        order.Status,
+        order.UserId,
+        order.TableId,
+        order.RestaurantId
+    });
+}).RequireAuthorization().WithName("CreateOrder").WithTags("Orders");
+
+app.MapPut("/orders/{id}", async (int id, OrderUpdateDto dto, RestaurantContext db) =>
+{
+    var order = await db.Orders
+        .Include(o => o.OrderItems)
+        .FirstOrDefaultAsync(o => o.OrderId == id);
+
+    if (order == null)
+        return Results.NotFound();
+
+    order.Name = dto.Name;
+    order.UserId = dto.UserId;
+    order.TableId = dto.TableId;
+    order.Status = dto.Status;
+
+    db.OrderItems.RemoveRange(order.OrderItems);
+
+    order.OrderItems = dto.OrderItems.Select(i => new OrderItem
+    {
+        MenuItemId = i.MenuItemId,
+        Quantity = i.Quantity
+    }).ToList();
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        order.OrderId,
+        order.Name,
+        order.Status,
+        order.UserId,
+        order.TableId,
+        order.RestaurantId
+    });
+}).RequireAuthorization().WithName("UpdateOrder").WithTags("Orders");
 
 app.MapPut("/orders/{id}/status", async (int id, OrderStatusUpdateDto dto, RestaurantContext db) =>
-    {
-        var order = await db.Orders.FindAsync(id);
-        if (order == null)
-            return Results.NotFound();
+{
+    var order = await db.Orders.FindAsync(id);
+    if (order == null)
+        return Results.NotFound();
 
-        order.Status = dto.Status;
-        await db.SaveChangesAsync();
+    order.Status = dto.Status;
+    await db.SaveChangesAsync();
 
-        return Results.NoContent();
-    })
-    .WithName("UpdateOrderStatus")
-    .WithTags("Orders");
+    return Results.NoContent();
+}).RequireAuthorization().WithName("UpdateOrderStatus").WithTags("Orders");
 
+app.MapDelete("/orders/{id}", async (int id, RestaurantContext db) =>
+{
+    var order = await db.Orders.FindAsync(id);
+    if (order == null)
+        return Results.NotFound();
+
+    db.Orders.Remove(order);
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+}).RequireAuthorization().WithName("DeleteOrder").WithTags("Orders");
+
+// Jelovnik
 app.MapGet("/menuitems", async (RestaurantContext db) =>
     await db.MenuItems
         .Include(x => x.Category)
@@ -279,21 +329,20 @@ app.MapGet("/menuitems", async (RestaurantContext db) =>
             x.CategoryId,
             CategoryName = x.Category.Name
         })
-        .ToListAsync())
+        .ToListAsync()).RequireAuthorization()
     .WithName("GetMenuItems")
     .WithTags("Menu");
 
 app.MapGet("/categories", async (RestaurantContext db) =>
-        await db.Categories
-            .Select(c => new
-            {
-                c.CategoryId,
-                c.Name
-            })
-            .ToListAsync())
+    await db.Categories
+        .Select(c => new
+        {
+            c.CategoryId,
+            c.Name
+        })
+        .ToListAsync()).RequireAuthorization()
     .WithName("GetCategories")
     .WithTags("Menu");
-
 
 app.MapPut("/menuitems/{id}", async (int id, MenuItem updatedItem, RestaurantContext db) =>
 {
@@ -307,31 +356,26 @@ app.MapPut("/menuitems/{id}", async (int id, MenuItem updatedItem, RestaurantCon
 
     await db.SaveChangesAsync();
     return Results.NoContent();
-}).WithName("UpdateMenuItem").WithTags("Menu");
+}).RequireAuthorization().WithName("UpdateMenuItem").WithTags("Menu");
 
 app.MapPost("/menuitems", async (MenuItem newItem, RestaurantContext db) =>
-    {
-        db.MenuItems.Add(newItem);
-        await db.SaveChangesAsync();
+{
+    db.MenuItems.Add(newItem);
+    await db.SaveChangesAsync();
 
-        return Results.Created($"/menuitems/{newItem.MenuItemId}", newItem);
-    })
-    .WithName("CreateMenuItem")
-    .WithTags("Menu");
+    return Results.Created($"/menuitems/{newItem.MenuItemId}", newItem);
+}).RequireAuthorization().WithName("CreateMenuItem").WithTags("Menu");
+
 app.MapDelete("/menuitems/{id:int}", async (int id, RestaurantContext db) =>
-    {
-        var item = await db.MenuItems.FindAsync(id);
-        if (item == null)
-        {
-            return Results.NotFound();
-        }
+{
+    var item = await db.MenuItems.FindAsync(id);
+    if (item == null)
+        return Results.NotFound();
 
-        db.MenuItems.Remove(item);
-        await db.SaveChangesAsync();
+    db.MenuItems.Remove(item);
+    await db.SaveChangesAsync();
 
-        return Results.NoContent();
-    })
-    .WithName("DeleteMenuItem")
-    .WithTags("Menu");
+    return Results.NoContent();
+}).RequireAuthorization().WithName("DeleteMenuItem").WithTags("Menu");
 
 app.Run();
